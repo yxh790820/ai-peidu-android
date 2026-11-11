@@ -121,6 +121,16 @@ body{
 .msgimg{max-width:100%;border-radius:9px;display:block;margin-bottom:6px;background:#000}
 .msgsize{font-size:10.5px;opacity:.65;margin-bottom:4px}
 
+/* 权限提示条 */
+#permBar{flex:0 0 auto;display:flex;align-items:center;gap:8px;
+  padding:8px 12px;background:rgba(47,111,235,.10);border-bottom:1px solid var(--line);
+  font-size:12.5px;color:var(--accent)}
+#permBar.hidden{display:none}
+#permBar span{flex:1;min-width:0}
+#permBar button{flex:0 0 auto;border:0;background:var(--accent);color:#fff;
+  font-size:12px;padding:5px 12px;border-radius:8px}
+#permBar button.ghost{background:transparent;color:var(--muted);font-size:15px;padding:2px 6px}
+
 /* 框选层 */
 #cropLayer{position:fixed;inset:0;z-index:90;background:#000}
 #cropLayer.hidden{display:none}
@@ -176,8 +186,13 @@ html.float-mode #dragBar{ display:flex }
 
 <div id="sheet">
 <div id="dragBar"><span></span></div>
+<div id="permBar" class="hidden">
+  <span id="permText"></span>
+  <button id="permGo">去开启</button>
+  <button class="ghost" id="permX">×</button>
+</div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.3.0</small></div>
+  <div class="brand">陪读<small id="ver">1.3.1</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="btnNew" title="新话题">＋</button>
   <button class="ico" id="btnCfg" title="设置">⚙</button>
@@ -936,8 +951,45 @@ if(capTryEl) capTryEl.onclick = function(){
   }
 };
 
+/* ---------- 首页权限提示条 ---------- */
+var permDismissed = false;
+function checkPerms(){
+  var bar = $('#permBar');
+  if(!bar) return;
+  var st = null;
+  try{ st = JSON.parse(PeiduBridge.ballState()); }catch(e){ bar.classList.add('hidden'); return; }
+  if(!st || st.want === false || permDismissed){ bar.classList.add('hidden'); return; }
+  var need = [];
+  if(!st.overlay) need.push('「显示在其他应用上层」');
+  if(!st.a11y) need.push('「无障碍」');
+  if(!need.length){ bar.classList.add('hidden'); return; }
+  var t = $('#permText');
+  if(t) t.textContent = '悬浮球还差 ' + need.join(' 和 ') + '，不开也能用划词';
+  bar.classList.remove('hidden');
+}
+var permGoEl = $('#permGo'), permXEl = $('#permX');
+if(permGoEl) permGoEl.onclick = function(){
+  var st = null;
+  try{ st = JSON.parse(PeiduBridge.ballState()); }catch(e){}
+  try{
+    if(st && !st.overlay) PeiduBridge.startBall();
+    else PeiduBridge.openA11ySettings();
+  }catch(e){}
+  setTimeout(checkPerms, 1500);
+};
+if(permXEl) permXEl.onclick = function(){
+  permDismissed = true;
+  var bar = $('#permBar');
+  if(bar) bar.classList.add('hidden');
+};
+document.addEventListener('visibilitychange', function(){
+  if(!document.hidden) setTimeout(checkPerms, 600);
+});
+
 /* ---------- 默认记录 ---------- */
 restoreMsgs();
+checkPerms();
+setTimeout(checkPerms, 1200);
 if(!messages.length && !chatEl.childNodes.length){
   var hi = document.createElement('div');
   hi.className = 'msg ai';

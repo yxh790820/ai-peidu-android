@@ -295,7 +295,8 @@ class MainActivity : AppCompatActivity() {
         fun ballState(): String {
             val overlay = android.os.Build.VERSION.SDK_INT < 23 ||
                 android.provider.Settings.canDrawOverlays(this@MainActivity)
-            return "{\"overlay\":$overlay,\"a11y\":${PeiduScreenService.isAlive},\"ball\":${FloatingBallService.running}}"
+            val want = getSharedPreferences("peidu", MODE_PRIVATE).getString("ball_on", "1") == "1"
+            return "{\"overlay\":$overlay,\"a11y\":${PeiduScreenService.isAlive},\"ball\":${FloatingBallService.running},\"want\":$want}"
         }
 
         @JavascriptInterface
