@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">陪读</string>
+    <string name="accessibility_desc">用来「点悬浮球 → 截取当前屏幕 → 框选一段 → 问陪读」。只调用系统截屏能力，不读取屏幕上的任何文字或控件内容。</string>
 </resources>

@@ -29,12 +29,18 @@ import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        /** 点悬浮球截完屏后拉起本页，进入框选 */
+        const val ACTION_CAPTURE = "com.yxh.peidu.CAPTURE"
+    }
+
     private lateinit var web: WebView
     private val io = Executors.newCachedThreadPool()
     private var pendingText: String? = null
     private var pendingImage: String? = null
     private var pageReady = false
     private var floatMode = false
+    private var pendingCapture = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +48,7 @@ class MainActivity : AppCompatActivity() {
 
         val loader = WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/shot/", ShotPathHandler())
             .build()
 
         web = WebView(this)
@@ -74,11 +81,22 @@ class MainActivity : AppCompatActivity() {
                 pageReady = true
                 pushSystemDark()
                 js("window.__setFloat && window.__setFloat($floatMode)")
+                if (pendingCapture) {
+                    pendingCapture = false
+                    js("window.__onCapture && window.__onCapture()")
+                }
                 flushPending()
             }
         }
         web.addJavascriptInterface(Bridge(), "PeiduBridge")
         web.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+
+        // 默认就带悬浮球；想关去 ⚙ 里点「关闭」（关掉后记住，下次不再自动起）
+        if (getSharedPreferences("peidu", MODE_PRIVATE).getString("ball_on", "1") == "1" &&
+            android.provider.Settings.canDrawOverlays(this)
+        ) {
+            FloatingBallService.start(this)
+        }
 
         handleIntent(intent)
     }
@@ -96,7 +114,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun isFloatIntent(i: Intent?): Boolean {
         val a = i?.action ?: return false
-        return a == Intent.ACTION_PROCESS_TEXT || a == Intent.ACTION_SEND
+        return a == Intent.ACTION_PROCESS_TEXT || a == Intent.ACTION_SEND || a == ACTION_CAPTURE
+    }
+
+    /** 把内存里那张截屏以 JPEG 形式喂给 WebView（不落地、不经过 JS 字符串） */
+    private class ShotPathHandler : WebViewAssetLoader.PathHandler {
+        override fun handle(path: String): WebResourceResponse? {
+            val bmp = ShotHolder.peek() ?: return null
+            return try {
+                val bos = java.io.ByteArrayOutputStream()
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, bos)
+                WebResourceResponse(
+                    "image/jpeg", null,
+                    java.io.ByteArrayInputStream(bos.toByteArray())
+                )
+            } catch (e: Throwable) {
+                null
+            }
+        }
     }
 
     /** 选中文字/分享唤出时：窗口铺满但透明，卡片由网页画在底部 70%，上面露出的原 App 可见可点 */
@@ -144,6 +179,13 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(i: Intent?) {
         if (i == null) return
         when (i.action) {
+            ACTION_CAPTURE -> {
+                if (pageReady) {
+                    js("window.__onCapture && window.__onCapture()")
+                } else {
+                    pendingCapture = true
+                }
+            }
             Intent.ACTION_PROCESS_TEXT -> {
                 val t = i.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
                 if (!t.isNullOrBlank()) {
@@ -217,6 +259,74 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun hide() {
             runOnUiThread { moveTaskToBack(true) }
+        }
+
+        /** 开/关悬浮球，返回状态：ok / need_overlay / need_a11y */
+        @JavascriptInterface
+        fun startBall(): String {
+            if (android.os.Build.VERSION.SDK_INT >= 23 &&
+                !android.provider.Settings.canDrawOverlays(this@MainActivity)
+            ) {
+                runOnUiThread {
+                    try {
+                        startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:$packageName")
+                            )
+                        )
+                    } catch (e: Throwable) {}
+                }
+                return "need_overlay"
+            }
+            FloatingBallService.start(this@MainActivity)
+            getSharedPreferences("peidu", MODE_PRIVATE).edit().putString("ball_on", "1").apply()
+            return if (PeiduScreenService.isAlive) "ok" else "need_a11y"
+        }
+
+        @JavascriptInterface
+        fun stopBall() {
+            FloatingBallService.stop(this@MainActivity)
+            getSharedPreferences("peidu", MODE_PRIVATE).edit().putString("ball_on", "0").apply()
+        }
+
+        /** 权限状态，给设置面板显示用 */
+        @JavascriptInterface
+        fun ballState(): String {
+            val overlay = android.os.Build.VERSION.SDK_INT < 23 ||
+                android.provider.Settings.canDrawOverlays(this@MainActivity)
+            return "{\"overlay\":$overlay,\"a11y\":${PeiduScreenService.isAlive},\"ball\":${FloatingBallService.running}}"
+        }
+
+        @JavascriptInterface
+        fun openA11ySettings() {
+            runOnUiThread {
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                } catch (e: Throwable) {}
+            }
+        }
+
+        /** 框选完成（或取消）后释放那张全屏截图，并把悬浮球放回来 */
+        @JavascriptInterface
+        fun clearShot() {
+            ShotHolder.take()?.recycle()
+            FloatingBallService.setBallVisible(true)
+        }
+
+        /** 直接截一张（设置面板里的「截屏试试」，也用来在悬浮球不好使时兜底） */
+        @JavascriptInterface
+        fun captureNow(): String {
+            if (!PeiduScreenService.isAlive) return "no_a11y"
+            PeiduScreenService.capture { bmp, err ->
+                if (bmp == null) {
+                    Notify.toast(this@MainActivity, "截屏失败：$err")
+                    return@capture
+                }
+                ShotHolder.put(bmp)
+                js("window.__onCapture && window.__onCapture()")
+            }
+            return "ok"
         }
 
         @JavascriptInterface

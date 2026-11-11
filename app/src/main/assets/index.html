@@ -118,6 +118,22 @@ body{
 .msgactions button{border:1px solid var(--line);background:var(--panel);color:var(--muted);
   font-size:11.5px;padding:3px 10px;border-radius:7px}
 .msgactions button:active{background:var(--panel2)}
+.msgimg{max-width:100%;border-radius:9px;display:block;margin-bottom:6px;background:#000}
+.msgsize{font-size:10.5px;opacity:.65;margin-bottom:4px}
+
+/* 框选层 */
+#cropLayer{position:fixed;inset:0;z-index:90;background:#000}
+#cropLayer.hidden{display:none}
+#cropImg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;touch-action:none}
+#cropSel{position:absolute;border:2px solid #4c8dff;background:rgba(76,141,255,.18);
+  box-shadow:0 0 0 9999px rgba(0,0,0,.45);display:none;pointer-events:none;border-radius:2px}
+.cropTip{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:50%;transform:translateX(-50%);
+  color:#fff;font-size:13px;background:rgba(0,0,0,.55);padding:7px 14px;border-radius:16px;z-index:3;white-space:nowrap}
+.cropBar{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 18px);left:0;right:0;
+  display:flex;gap:12px;justify-content:center;z-index:3}
+.cropBar button{padding:11px 22px;border-radius:11px;border:0;font-size:14px;
+  background:#2f6feb;color:#fff;opacity:.9}
+.cropBar button.ghost{background:rgba(255,255,255,.18);color:#fff}
 
 /* 悬浮小窗模式：窗口透明铺满，卡片是可以拖动/调大小的浮动面板 */
 html.float-mode, html.float-mode body{ background:transparent; }
@@ -161,7 +177,7 @@ html.float-mode #dragBar{ display:flex }
 <div id="sheet">
 <div id="dragBar"><span></span></div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.2.1</small></div>
+  <div class="brand">陪读<small id="ver">1.3.0</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="btnNew" title="新话题">＋</button>
   <button class="ico" id="btnCfg" title="设置">⚙</button>
@@ -182,6 +198,16 @@ html.float-mode #dragBar{ display:flex }
   </div>
 </footer>
 <div id="grip"></div>
+</div>
+
+<div id="cropLayer" class="hidden">
+  <img id="cropImg" alt="">
+  <div id="cropSel"></div>
+  <div class="cropTip" id="cropTip">在屏幕上拖一个框，框住要问的那一段</div>
+  <div class="cropBar">
+    <button class="ghost" id="cropCancel">取消</button>
+    <button id="cropOk" style="display:none">就用这块</button>
+  </div>
 </div>
 
 <div class="mask hidden" id="mask">
@@ -219,6 +245,18 @@ html.float-mode #dragBar{ display:flex }
       <div class="seg" id="autoSeg">
         <button data-a="1">自动提问</button>
         <button data-a="0">只填入不发送</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>悬浮球（点一下截屏，框选一段再问）</label>
+      <div class="seg">
+        <button id="ballOn">开启</button>
+        <button id="ballOff">关闭</button>
+      </div>
+      <div class="tip" id="ballTip"></div>
+      <div class="seg" style="margin-top:8px">
+        <button id="capTry">截屏试试</button>
       </div>
     </div>
 
@@ -473,13 +511,30 @@ function copyText(t){
 }
 
 /* ---------- 消息 ---------- */
-function addMsg(role, text){
+function addMsg(role, text, img){
   var d = document.createElement('div');
   d.className = 'msg ' + (role === 'user' ? 'user' : 'ai');
   var b = document.createElement('div');
   b.className = 'bubble';
-  if(role === 'user') b.textContent = text;
-  else b.innerHTML = renderRich(text);
+  if(role === 'user'){
+    if(img){
+      var im = document.createElement('img');
+      im.className = 'msgimg';
+      im.src = img;
+      b.appendChild(im);
+      var sz = document.createElement('div');
+      sz.className = 'msgsize';
+      b.appendChild(sz);
+      im.onload = function(){ sz.textContent = im.naturalWidth + '×' + im.naturalHeight; };
+    }
+    if(text){
+      var t = document.createElement('div');
+      t.textContent = text;
+      b.appendChild(t);
+    }
+  } else {
+    b.innerHTML = renderRich(text);
+  }
   d.appendChild(b);
   chatEl.appendChild(d);
   scrollBottom();
@@ -505,6 +560,7 @@ function send(){
   var img = quoteImg;
   if(!q && !img && !quote) return;
   if(!q && quote){ q = quote; }
+  if(!q && img){ q = '解释这段'; }
   var p = promptByName(cfg.prompt);
 
   // 以模板包装
@@ -515,7 +571,7 @@ function send(){
   }
   if(!img && !q) return;
 
-  addMsg('user', q || '[图片]');
+  addMsg('user', q, img);
   messages.push({role:'user', content: buildUserContent(body, img)});
 
   inputEl.value = ''; autoGrow();
@@ -684,6 +740,7 @@ inputEl.addEventListener('input', autoGrow);
 /* ---------- 设置面板 ---------- */
 function fillSheet(){
   var s = svc();
+  refreshBall();
   $('#fBase').value = s.base || '';
   $('#fModel').value = s.model || '';
   $('#fKey').value = s.key || '';
@@ -749,6 +806,135 @@ $('#btnNew').onclick = function(){
 };
 sendEl.onclick = function(){ if(busy) stop(); else send(); };
 $('#quoteX').onclick = clearQuote;
+
+/* ---------- 悬浮球截屏 → 框选一块再问 ---------- */
+var cropLayerEl = document.getElementById('cropLayer');
+var cropImgEl = document.getElementById('cropImg');
+var cropSelEl = document.getElementById('cropSel');
+var cropDown = false, cropX0 = 0, cropY0 = 0, cropRect = null;
+
+window.__onCapture = function(){
+  cropSelEl.style.display = 'none';
+  cropRect = null; cropDown = false;
+  cropImgEl.src = '/shot/current.jpg?t=' + Date.now();
+  cropLayerEl.classList.remove('hidden');
+  var tip = document.getElementById('cropTip');
+  if(tip) tip.textContent = '拖一个框，框住要问的那一段';
+};
+
+function imgBox(){
+  var r = cropImgEl.getBoundingClientRect();
+  var nw = cropImgEl.naturalWidth || 1, nh = cropImgEl.naturalHeight || 1;
+  var sc = Math.min(r.width / nw, r.height / nh);
+  var w = nw * sc, h = nh * sc;
+  return { x: r.left + (r.width - w) / 2, y: r.top + (r.height - h) / 2, w: w, h: h, sc: sc };
+}
+
+cropImgEl.addEventListener('pointerdown', function(e){
+  if(cropLayerEl.classList.contains('hidden')) return;
+  var ib = imgBox();
+  if(e.clientX < ib.x || e.clientX > ib.x + ib.w || e.clientY < ib.y || e.clientY > ib.y + ib.h) return;
+  cropDown = true;
+  cropX0 = e.clientX; cropY0 = e.clientY;
+  cropSelEl.style.display = 'block';
+  cropSelEl.style.left = e.clientX + 'px';
+  cropSelEl.style.top = e.clientY + 'px';
+  cropSelEl.style.width = '0px';
+  cropSelEl.style.height = '0px';
+  try{ cropImgEl.setPointerCapture(e.pointerId); }catch(err){}
+});
+
+cropImgEl.addEventListener('pointermove', function(e){
+  if(!cropDown) return;
+  var x = Math.min(cropX0, e.clientX), y = Math.min(cropY0, e.clientY);
+  var w = Math.abs(e.clientX - cropX0), h = Math.abs(e.clientY - cropY0);
+  cropSelEl.style.left = x + 'px';
+  cropSelEl.style.top = y + 'px';
+  cropSelEl.style.width = w + 'px';
+  cropSelEl.style.height = h + 'px';
+  cropRect = { x: x, y: y, w: w, h: h };
+  e.preventDefault();
+});
+
+cropImgEl.addEventListener('pointerup', function(e){
+  if(!cropDown) return;
+  cropDown = false;
+  var r = cropRect;
+  if(!r || r.w < 24 || r.h < 16){
+    cropSelEl.style.display = 'none';
+    return;
+  }
+  doCrop(r);
+});
+
+function doCrop(r){
+  var ib = imgBox();
+  var nw = cropImgEl.naturalWidth, nh = cropImgEl.naturalHeight;
+  var sx = Math.max(0, (r.x - ib.x) / ib.sc);
+  var sy = Math.max(0, (r.y - ib.y) / ib.sc);
+  var sw = Math.min(nw - sx, r.w / ib.sc);
+  var sh = Math.min(nh - sy, r.h / ib.sc);
+  if(sw < 8 || sh < 8){ closeCrop(); return; }
+  var c = document.createElement('canvas');
+  c.width = Math.round(sw);
+  c.height = Math.round(sh);
+  c.getContext('2d').drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  var dataUrl = c.toDataURL('image/jpeg', 0.92);
+  closeCrop();
+  quoteImg = dataUrl;
+  quote = '';
+  send();
+}
+
+function closeCrop(){
+  cropLayerEl.classList.add('hidden');
+  cropSelEl.style.display = 'none';
+  cropImgEl.removeAttribute('src');
+  try{ PeiduBridge.clearShot(); }catch(err){}
+}
+document.getElementById('cropCancel').onclick = closeCrop;
+
+/* ---------- 悬浮球开关 ---------- */
+function refreshBall(){
+  var st = { overlay: false, a11y: false, ball: false };
+  try{ st = JSON.parse(PeiduBridge.ballState()); }catch(e){}
+  var t = [];
+  t.push(st.ball ? '悬浮球：已开启' : '悬浮球：未开启');
+  if(!st.overlay) t.push('缺「显示在其他应用上层」权限');
+  if(!st.a11y) t.push('缺无障碍（截屏用）');
+  if(st.ball && st.overlay && st.a11y) t.push('一切正常，点球即可截图');
+  var el = $('#ballTip');
+  if(el) el.textContent = t.join(' · ');
+}
+var ballOnEl = $('#ballOn'), ballOffEl = $('#ballOff');
+if(ballOnEl) ballOnEl.onclick = function(){
+  var r = 'ok';
+  try{ r = PeiduBridge.startBall(); }catch(e){ r = 'err'; }
+  if(r === 'need_overlay'){
+    var el = $('#ballTip'); if(el) el.textContent = '请在打开的设置页里允许「显示在其他应用上层」，然后回来再点开启';
+  } else if(r === 'need_a11y'){
+    var el2 = $('#ballTip'); if(el2) el2.textContent = '悬浮球开了，但截屏服务没开：点这里去无障碍里打开「陪读」';
+    try{ PeiduBridge.openA11ySettings(); }catch(e){}
+  }
+  setTimeout(refreshBall, 800);
+};
+if(ballOffEl) ballOffEl.onclick = function(){
+  try{ PeiduBridge.stopBall(); }catch(e){}
+  setTimeout(refreshBall, 400);
+};
+var capTryEl = $('#capTry');
+if(capTryEl) capTryEl.onclick = function(){
+  var r = 'ok';
+  try{ r = PeiduBridge.captureNow(); }catch(e){ r = 'err'; }
+  if(r === 'no_a11y'){
+    var el = $('#ballTip');
+    if(el) el.textContent = '截屏服务没开：去无障碍里打开「陪读」再回来';
+    try{ PeiduBridge.openA11ySettings(); }catch(e){}
+  } else {
+    var el2 = $('#ballTip');
+    if(el2) el2.textContent = '正在截屏…';
+  }
+};
 
 /* ---------- 默认记录 ---------- */
 restoreMsgs();
