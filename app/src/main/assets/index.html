@@ -58,7 +58,7 @@ body{
 .ico:active{background:var(--panel2)}
 
 /* 对话区 */
-#chat{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding:12px 12px 4px;-webkit-overflow-scrolling:touch}
+#chat{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding:12px 12px 18px;-webkit-overflow-scrolling:touch}
 .msg{margin-bottom:14px;display:flex;flex-direction:column}
 .msg.user{align-items:flex-end}
 .msg .bubble{
@@ -192,7 +192,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.3.1</small></div>
+  <div class="brand">陪读<small id="ver">1.4.0</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="btnNew" title="新话题">＋</button>
   <button class="ico" id="btnCfg" title="设置">⚙</button>
@@ -273,6 +273,14 @@ html.float-mode #dragBar{ display:flex }
       <div class="seg" style="margin-top:8px">
         <button id="capTry">截屏试试</button>
       </div>
+    </div>
+
+    <div class="field">
+      <label>存笔记目录</label>
+      <div class="seg">
+        <button id="noteDirBtn">选择…</button>
+      </div>
+      <div class="tip" id="noteDirTip"></div>
     </div>
 
     <div class="tip">手机和电脑在同一个 WiFi 下时，可以把 base 填成电脑的局域网地址（如 http://192.168.2.10:18080）直接用本地模型。</div>
@@ -675,10 +683,15 @@ function restoreMsgs(){
   try{
     var s = JSON.parse(localStorage.getItem('peidu.msgs') || '[]');
     if(!s || !s.length) return;
+    var prevUser = null;
     s.forEach(function(m){
       var txt = typeof m.content === 'string' ? m.content
         : (m.content || []).map(function(c){ return c.text || ''; }).filter(Boolean).join('');
-      if(txt) addMsg(m.role, txt);
+      if(!txt) return;
+      addMsg(m.role, txt);
+      var el = chatEl.lastElementChild;
+      if(m.role === 'user') prevUser = m;
+      else if(m.role === 'assistant' && el) addActions(el, txt, prevUser);
     });
     messages = s;
   }catch(e){}
@@ -691,20 +704,70 @@ window.__onDone = function(full){
   if(full) curText = full;
   curBubble.innerHTML = renderRich(curText);
   messages.push({role:'assistant', content: curText});
-  addActions(curEl, curText);
+  var lastUser = null;
+  for(var i = messages.length - 2; i >= 0; i--){
+    if(messages[i].role === 'user'){ lastUser = messages[i]; break; }
+  }
+  addActions(curEl, curText, lastUser);
   finish(false);
   saveMsgs();
   scrollBottom();
 };
-function addActions(el, text){
+function addActions(el, text, userMsg){
   var bar = document.createElement('div');
   bar.className = 'msgactions';
   var b = document.createElement('button');
   b.textContent = '复制';
   b.onclick = function(){ copyText(text); };
   bar.appendChild(b);
+  var sb = document.createElement('button');
+  sb.textContent = '存笔记';
+  sb.onclick = function(){ doSaveNote(text, userMsg); };
+  bar.appendChild(sb);
   el.appendChild(bar);
 }
+
+/* ---------- 存笔记（追加到当天 md，图进 attachments/） ---------- */
+function turnParts(userMsg){
+  var txt = '', img = '';
+  if(!userMsg) return { txt: txt, img: img };
+  if(typeof userMsg.content === 'string'){ txt = userMsg.content; }
+  else {
+    (userMsg.content || []).forEach(function(c){
+      if(c.type === 'text') txt += (c.text || '');
+      if(c.type === 'image_url') img = (c.image_url || {}).url || '';
+    });
+  }
+  return { txt: txt, img: img };
+}
+function doSaveNote(answer, userMsg){
+  var p = turnParts(userMsg);
+  var payload = {
+    text: p.txt,
+    question: p.txt,
+    answer: answer,
+    service: cfg.current,
+    prompt: cfg.prompt,
+    image: p.img
+  };
+  var r = '';
+  try{ r = PeiduBridge.saveNote(JSON.stringify(payload)); }catch(e){ r = 'ERR:' + e; }
+  var msg = (r.indexOf('OK:') === 0) ? ('已存到 ' + r.slice(3)) : (r.replace('ERR:', '存失败：') || '存失败');
+  try{ PeiduBridge.toast(msg); }catch(e){}
+  var el = $('#hint');
+  if(el) el.textContent = msg;
+}
+function refreshNoteDir(){
+  var n = '';
+  try{ n = PeiduBridge.noteDirName() || ''; }catch(e){}
+  var t = $('#noteDirTip');
+  if(t) t.textContent = n ? ('已选：' + n) : '还没选。存笔记会追加到当天 YYYY-MM-DD.md，截图放 attachments/';
+}
+window.__onNoteDir = function(name){ refreshNoteDir(); };
+var noteDirBtnEl = $('#noteDirBtn');
+if(noteDirBtnEl) noteDirBtnEl.onclick = function(){
+  try{ PeiduBridge.pickNoteDir(); }catch(e){}
+};
 window.__onError = function(msg){
   var d = document.createElement('div');
   d.style.cssText = 'color:#e5484d;font-size:13px;margin-top:6px;white-space:pre-wrap';
@@ -756,6 +819,7 @@ inputEl.addEventListener('input', autoGrow);
 function fillSheet(){
   var s = svc();
   refreshBall();
+  refreshNoteDir();
   $('#fBase').value = s.base || '';
   $('#fModel').value = s.model || '';
   $('#fKey').value = s.key || '';
@@ -940,6 +1004,7 @@ if(ballOffEl) ballOffEl.onclick = function(){
 var capTryEl = $('#capTry');
 if(capTryEl) capTryEl.onclick = function(){
   var r = 'ok';
+  try{ $('#mask').classList.add('hidden'); }catch(e){}
   try{ r = PeiduBridge.captureNow(); }catch(e){ r = 'err'; }
   if(r === 'no_a11y'){
     var el = $('#ballTip');
@@ -953,6 +1018,7 @@ if(capTryEl) capTryEl.onclick = function(){
 
 /* ---------- 首页权限提示条 ---------- */
 var permDismissed = false;
+var permTries = 0;
 function checkPerms(){
   var bar = $('#permBar');
   if(!bar) return;
@@ -962,10 +1028,15 @@ function checkPerms(){
   var need = [];
   if(!st.overlay) need.push('「显示在其他应用上层」');
   if(!st.a11y) need.push('「无障碍」');
-  if(!need.length){ bar.classList.add('hidden'); return; }
+  if(!need.length){ bar.classList.add('hidden'); permTries = 0; return; }
   var t = $('#permText');
   if(t) t.textContent = '悬浮球还差 ' + need.join(' 和 ') + '，不开也能用划词';
   bar.classList.remove('hidden');
+  /* 无障碍在重装/杀进程后要等系统重新绑定，轮询一会儿，连上就自动消失 */
+  if(permTries < 15){
+    permTries++;
+    setTimeout(checkPerms, 2000);
+  }
 }
 var permGoEl = $('#permGo'), permXEl = $('#permX');
 if(permGoEl) permGoEl.onclick = function(){

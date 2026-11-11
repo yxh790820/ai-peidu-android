@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         /** 点悬浮球截完屏后拉起本页，进入框选 */
         const val ACTION_CAPTURE = "com.yxh.peidu.CAPTURE"
+        private const val REQ_PICK_DIR = 1001
     }
 
     private lateinit var web: WebView
@@ -162,6 +163,21 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         pushSystemDark()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_PICK_DIR && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            try {
+                NoteStore.saveDir(this, uri)
+                js("window.__onNoteDir && window.__onNoteDir(${JSONObject.quote(NoteStore.dirName(this))})")
+                Notify.toast(this, "笔记目录已设置")
+            } catch (e: Throwable) {
+                Notify.toast(this, "设置目录失败：" + (e.message ?: ""))
+            }
+        }
     }
 
     private fun pushSystemDark() {
@@ -314,6 +330,33 @@ class MainActivity : AppCompatActivity() {
             ShotHolder.take()?.recycle()
             FloatingBallService.setBallVisible(true)
         }
+
+        // ---------- 存笔记 ----------
+
+        @JavascriptInterface
+        fun noteDirName(): String = NoteStore.dirName(this@MainActivity)
+
+        @JavascriptInterface
+        fun pickNoteDir() {
+            runOnUiThread {
+                try {
+                    val i = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+                        )
+                    }
+                    startActivityForResult(i, REQ_PICK_DIR)
+                } catch (e: Throwable) {
+                    Notify.toast(this@MainActivity, "打不开目录选择器：" + (e.message ?: ""))
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun saveNote(payload: String): String = NoteStore.save(this@MainActivity, payload)
 
         /** 直接截一张（设置面板里的「截屏试试」，也用来在悬浮球不好使时兜底） */
         @JavascriptInterface
