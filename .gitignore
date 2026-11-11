@@ -1,0 +1,23 @@
+# Android / Gradle
+*.iml
+.gradle/
+local.properties
+.idea/
+build/
+captures/
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+
+# 签名文件
+*.jks
+*.keystore
+keystore.properties
+
+# 本地私密配置：里面有 API Key，绝不提交
+app/src/main/assets/secrets.js
+
+# 系统
+.DS_Store
+Thumbs.db

@@ -1,0 +1,66 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// 签名信息放本地 keystore.properties（已被 .gitignore 排除）；没有该文件时用系统 debug 签名
+def ksProps = new Properties()
+def ksFile = rootProject.file("keystore.properties")
+def hasKs = ksFile.exists()
+if (hasKs) {
+    ksFile.withInputStream { ksProps.load(it) }
+}
+
+android {
+    namespace 'com.yxh.peidu'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.yxh.peidu"
+        minSdk 24
+        targetSdk 34
+        versionCode 7
+        versionName "1.2.1"
+    }
+
+    signingConfigs {
+        if (hasKs) {
+            release {
+                storeFile file(ksProps['storeFile'])
+                storePassword ksProps['storePassword']
+                keyAlias ksProps['keyAlias']
+                keyPassword ksProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasKs) {
+                signingConfig signingConfigs.release
+            }
+        }
+        debug {
+            if (hasKs) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.webkit:webkit:1.11.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}
