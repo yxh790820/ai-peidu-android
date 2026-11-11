@@ -121,6 +121,26 @@ body{
 .msgimg{max-width:100%;border-radius:9px;display:block;margin-bottom:6px;background:#000}
 .msgsize{font-size:10.5px;opacity:.65;margin-bottom:4px}
 
+/* 服务 / 档位列表 */
+.itemlist{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.item{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+.item:last-child{border-bottom:0}
+.item.cur{background:rgba(47,111,235,.09)}
+.item .dot{width:7px;height:7px;border-radius:50%;background:var(--line);flex:0 0 auto}
+.item.cur .dot{background:var(--accent)}
+.item .iname{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
+.item button{flex:0 0 auto;border:1px solid var(--line);background:transparent;color:var(--muted);
+  font-size:11.5px;padding:4px 10px;border-radius:7px}
+.item button.danger{color:#e5484d;border-color:rgba(229,72,77,.35)}
+.item button.danger.armed{background:#e5484d;color:#fff;border-color:#e5484d}
+
+/* 改名 / 确认小框 */
+.askbox{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);width:86%;max-width:420px;
+  background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:16px;
+  box-shadow:0 12px 40px rgba(0,0,0,.28)}
+.asktitle{font-size:13px;color:var(--muted);margin-bottom:10px}
+.askbox input{width:100%;box-sizing:border-box;margin-bottom:12px}
+
 /* 权限提示条 */
 #permBar{flex:0 0 auto;display:flex;align-items:center;gap:8px;
   padding:8px 12px;background:rgba(47,111,235,.10);border-bottom:1px solid var(--line);
@@ -192,7 +212,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.4.0</small></div>
+  <div class="brand">陪读<small id="ver">1.5.0</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="btnNew" title="新话题">＋</button>
   <button class="ico" id="btnCfg" title="设置">⚙</button>
@@ -230,8 +250,10 @@ html.float-mode #dragBar{ display:flex }
     <h2>设置 <button id="cfgClose">完成</button></h2>
 
     <div class="field">
-      <label>当前服务</label>
-      <div class="seg" id="svcSeg"></div>
+      <label>服务</label>
+      <div class="itemlist" id="svcList"></div>
+      <div class="seg" style="margin-top:8px"><button id="svcAdd">＋ 添加服务</button></div>
+      <div class="tip">点一行切到那个服务；「改名」自定名字，「删除」删掉</div>
     </div>
     <div class="field"><label>接口地址 base</label><input id="fBase" placeholder="https://api.deepseek.com/v1"></div>
     <div class="field"><label>模型名</label><input id="fModel" placeholder="deepseek-flash"></div>
@@ -284,6 +306,31 @@ html.float-mode #dragBar{ display:flex }
     </div>
 
     <div class="tip">手机和电脑在同一个 WiFi 下时，可以把 base 填成电脑的局域网地址（如 http://192.168.2.10:18080）直接用本地模型。</div>
+
+    <div class="field">
+      <label>档位（提示词）</label>
+      <div class="itemlist" id="prList"></div>
+      <div class="seg" style="margin-top:8px"><button id="prAdd">＋ 添加档位</button></div>
+      <div class="tip">点一行切换当前档位；「编辑」能改名字和提示词内容</div>
+    </div>
+  </div>
+</div>
+
+<div class="mask hidden" id="editMask">
+  <div class="sheet">
+    <h2>编辑档位 <button id="epClose">取消</button></h2>
+    <div class="field"><label>档位名称</label><input id="epName" placeholder="例如：物理讲解"></div>
+    <div class="field"><label>角色设定（system）</label><textarea id="epSys" rows="5" placeholder="告诉模型它是谁、该怎么回答"></textarea></div>
+    <div class="field"><label>提问模板（$content 代表选中的文字或图片）</label><textarea id="epTpl" rows="9" placeholder="$content"></textarea></div>
+    <div class="seg"><button id="epSave">保存</button></div>
+  </div>
+</div>
+
+<div class="mask hidden" id="askMask">
+  <div class="askbox">
+    <div class="asktitle" id="askTitle">改名</div>
+    <input id="askInput">
+    <div class="seg"><button id="askCancel">取消</button><button id="askOk">确定</button></div>
   </div>
 </div>
 
@@ -301,12 +348,12 @@ var chatEl = $('#chat'), inputEl = $('#input'), sendEl = $('#btnSend'),
 var PROMPTS = window.PEIDU_PROMPTS || [];
 var SEC = window.PEIDU_SECRETS || {};
 var DEFAULT_CFG = {
-  services: {
-    deepseek: Object.assign({ base:"https://api.deepseek.com/v1", model:"deepseek-flash", key:"",
+  services: [
+    Object.assign({ id:"deepseek", name:"DeepSeek", base:"https://api.deepseek.com/v1", model:"deepseek-flash", key:"",
                 params:{"thinking": {"type": "disabled"}} }, SEC.deepseek || {}),
-    local:    Object.assign({ base:"http://127.0.0.1:18080", model:"local", key:"",
+    Object.assign({ id:"local", name:"本地", base:"http://127.0.0.1:18080", model:"local", key:"",
                 params:{"chat_template_kwargs": {"enable_thinking": false}} }, SEC.local || {})
-  },
+  ],
   current: SEC.current || "deepseek",
   prompt: SEC.prompt || "翻译",
   font: SEC.font || 14,
@@ -335,15 +382,47 @@ function loadCfg(){
         if(o.theme) d.theme = o.theme;
         if(typeof o.autoSend === 'boolean') d.autoSend = o.autoSend;
         if(o.geom && typeof o.geom === 'object') d.geom = o.geom;
+        if(Array.isArray(o.prompts) && o.prompts.length) d.prompts = o.prompts;
       }
     }
   }catch(e){}
+  /* 老版本 services 是对象 {deepseek:{…}, local:{…}}，迁移成数组 */
+  if(!Array.isArray(d.services)){
+    var old = d.services || {}, arr = [];
+    Object.keys(old).forEach(function(k){
+      var v = old[k] || {};
+      arr.push({
+        id: k, name: v.name || (k === 'deepseek' ? 'DeepSeek' : (k === 'local' ? '本地' : k)),
+        base: v.base || '', model: v.model || '', key: v.key || '', params: v.params || {}
+      });
+    });
+    d.services = arr;
+  }
+  if(!d.services.length) d.services = JSON.parse(JSON.stringify(DEFAULT_CFG.services));
+  var hit = false;
+  for(var i = 0; i < d.services.length; i++){ if(d.services[i].id === d.current){ hit = true; break; } }
+  if(!hit) d.current = d.services[0].id;
   return d;
 }
 function saveCfg(){
   try{ localStorage.setItem('peidu.cfg', JSON.stringify(cfg)); }catch(e){}
 }
-function svc(){ return cfg.services[cfg.current] || {base:'',model:'',key:'',params:{}}; }
+function svc(){
+  var arr = cfg.services || [];
+  for(var i = 0; i < arr.length; i++){ if(arr[i].id === cfg.current) return arr[i]; }
+  return arr[0] || {base:'',model:'',key:'',params:{}};
+}
+function svcName(){
+  var s = svc();
+  return s.name || s.id || '';
+}
+/* 档位列表：第一次从 prompts.js 灌进来，之后以用户编辑过的为准 */
+function promptList(){
+  if(!Array.isArray(cfg.prompts) || !cfg.prompts.length){
+    cfg.prompts = JSON.parse(JSON.stringify(window.PEIDU_PROMPTS || []));
+  }
+  return cfg.prompts;
+}
 window.__sysDark = null;
 window.__setSystemDark = function(v){ window.__sysDark = v; applyTheme(); };
 /* ---------- 悬浮卡片：拖动移动 / 拖底边调大小 ---------- */
@@ -567,8 +646,9 @@ function scrollBottom(){ chatEl.scrollTop = chatEl.scrollHeight; }
 
 /* ---------- 发送 ---------- */
 function promptByName(name){
-  for(var i=0;i<PROMPTS.length;i++) if(PROMPTS[i].name === name) return PROMPTS[i];
-  return PROMPTS[0] || {name:'陪读', system:'', template:''};
+  var arr = promptList();
+  for(var i=0;i<arr.length;i++) if(arr[i].name === name) return arr[i];
+  return arr[0] || {name:'陪读', system:'', template:''};
 }
 function buildUserContent(q, img){
   if(!img) return q;
@@ -746,7 +826,7 @@ function doSaveNote(answer, userMsg){
     text: p.txt,
     question: p.txt,
     answer: answer,
-    service: cfg.current,
+    service: svcName(),
     prompt: cfg.prompt,
     image: p.img
   };
@@ -831,14 +911,159 @@ function fillSheet(){
   document.querySelectorAll('#autoSeg button').forEach(function(b){
     b.classList.toggle('on', (b.dataset.a === '1') === !!cfg.autoSend);
   });
-  var seg = $('#svcSeg'); seg.innerHTML='';
-  Object.keys(cfg.services).forEach(function(k){
-    var b = document.createElement('button');
-    b.textContent = k === 'deepseek' ? 'DeepSeek' : (k === 'local' ? '本地' : k);
-    b.classList.toggle('on', k === cfg.current);
-    b.onclick = function(){ cfg.current = k; saveCfg(); fillSheet(); };
-    seg.appendChild(b);
+  renderSvcList();
+  renderPrList();
+}
+
+/* ---------- 服务列表 ---------- */
+function renderSvcList(){
+  var box = $('#svcList'); if(!box) return;
+  box.innerHTML = '';
+  (cfg.services || []).forEach(function(s){
+    var row = document.createElement('div');
+    row.className = 'item' + (s.id === cfg.current ? ' cur' : '');
+    var dot = document.createElement('span'); dot.className = 'dot';
+    var nm = document.createElement('span'); nm.className = 'iname'; nm.textContent = s.name || s.id;
+    var rb = document.createElement('button'); rb.textContent = '改名';
+    rb.onclick = function(ev){
+      ev.stopPropagation();
+      askText('服务名称', s.name || s.id, function(v){
+        if(!v) return;
+        s.name = v; saveCfg(); fillSheet();
+      });
+    };
+    var db = document.createElement('button'); db.className = 'danger'; db.textContent = '删除';
+    db.onclick = function(ev){
+      ev.stopPropagation();
+      armDelete(db, function(){ delSvc(s); });
+    };
+    row.appendChild(dot); row.appendChild(nm); row.appendChild(rb); row.appendChild(db);
+    row.onclick = function(){ cfg.current = s.id; saveCfg(); fillSheet(); };
+    box.appendChild(row);
   });
+}
+function delSvc(s){
+  if((cfg.services || []).length <= 1){ toastMsg('至少要留一个服务'); return; }
+  var i = cfg.services.indexOf(s);
+  if(i >= 0) cfg.services.splice(i, 1);
+  if(cfg.current === s.id) cfg.current = cfg.services[0].id;
+  saveCfg(); fillSheet();
+}
+
+/* ---------- 档位列表 ---------- */
+function renderPrList(){
+  var box = $('#prList'); if(!box) return;
+  box.innerHTML = '';
+  promptList().forEach(function(p, i){
+    var row = document.createElement('div');
+    row.className = 'item' + (p.name === cfg.prompt ? ' cur' : '');
+    var dot = document.createElement('span'); dot.className = 'dot';
+    var nm = document.createElement('span'); nm.className = 'iname'; nm.textContent = p.name;
+    var eb = document.createElement('button'); eb.textContent = '编辑';
+    eb.onclick = function(ev){ ev.stopPropagation(); openPromptEditor(i); };
+    var db = document.createElement('button'); db.className = 'danger'; db.textContent = '删除';
+    db.onclick = function(ev){
+      ev.stopPropagation();
+      armDelete(db, function(){ delPrompt(i); });
+    };
+    row.appendChild(dot); row.appendChild(nm); row.appendChild(eb); row.appendChild(db);
+    row.onclick = function(){
+      cfg.prompt = p.name; saveCfg(); refreshPromptSelect(); renderPrList();
+    };
+    box.appendChild(row);
+  });
+}
+function delPrompt(i){
+  var arr = promptList();
+  if(arr.length <= 1){ toastMsg('至少要留一个档位'); return; }
+  var gone = arr[i];
+  arr.splice(i, 1);
+  if(cfg.prompt === gone.name) cfg.prompt = arr[0].name;
+  saveCfg(); refreshPromptSelect(); fillSheet();
+}
+function refreshPromptSelect(){
+  selEl.innerHTML = '';
+  promptList().forEach(function(p){
+    var o = document.createElement('option');
+    o.value = p.name; o.textContent = p.name;
+    if(p.name === cfg.prompt) o.selected = true;
+    selEl.appendChild(o);
+  });
+}
+var editIdx = -1;
+function openPromptEditor(i){
+  editIdx = i;
+  var p = promptList()[i]; if(!p) return;
+  $('#epName').value = p.name || '';
+  $('#epSys').value = p.system || '';
+  $('#epTpl').value = p.template || '';
+  $('#editMask').classList.remove('hidden');
+}
+$('#epSave').onclick = function(){
+  var p = promptList()[editIdx]; if(!p) return;
+  var oldName = p.name;
+  var nn = $('#epName').value.trim();
+  if(nn) p.name = nn;
+  p.system = $('#epSys').value;
+  p.template = $('#epTpl').value;
+  if(cfg.prompt === oldName) cfg.prompt = p.name;
+  saveCfg();
+  $('#editMask').classList.add('hidden');
+  refreshPromptSelect(); fillSheet();
+  toastMsg('已保存：' + p.name);
+};
+$('#epClose').onclick = function(){ $('#editMask').classList.add('hidden'); };
+$('#svcAdd').onclick = function(){
+  var id = 's' + Date.now().toString(36);
+  cfg.services.push({ id:id, name:'新服务', base:'', model:'', key:'', params:{} });
+  cfg.current = id;
+  saveCfg(); fillSheet();
+  askText('服务名称', '新服务', function(v){
+    if(!v) return;
+    svc().name = v; saveCfg(); fillSheet();
+  });
+};
+$('#prAdd').onclick = function(){
+  var arr = promptList();
+  var base = arr[0] || {system:'', template:''};
+  var n = 1, name = '新档位';
+  while(arr.some(function(p){ return p.name === name; })){ n++; name = '新档位' + n; }
+  arr.push({ name: name, system: base.system || '', template: '$content' });
+  cfg.prompt = name;
+  saveCfg(); refreshPromptSelect(); fillSheet();
+  openPromptEditor(arr.length - 1);
+};
+
+/* ---------- 改名小框 / 二次确认 ---------- */
+var askCb = null;
+function askText(title, value, cb){
+  askCb = cb;
+  $('#askTitle').textContent = title;
+  $('#askInput').value = value || '';
+  $('#askMask').classList.remove('hidden');
+  setTimeout(function(){ try{ $('#askInput').focus(); }catch(e){} }, 60);
+}
+$('#askOk').onclick = function(){
+  var v = $('#askInput').value.trim();
+  $('#askMask').classList.add('hidden');
+  var cb = askCb; askCb = null;
+  if(cb) cb(v);
+};
+$('#askCancel').onclick = function(){
+  $('#askMask').classList.add('hidden');
+  askCb = null;
+};
+function armDelete(btn, fn){
+  if(btn.classList.contains('armed')){ fn(); return; }
+  btn.classList.add('armed');
+  btn.textContent = '确认删除?';
+  setTimeout(function(){
+    btn.classList.remove('armed');
+    btn.textContent = '删除';
+  }, 2600);
+}
+function toastMsg(msg){
+  try{ PeiduBridge.toast(msg); }catch(e){}
 }
 $('#btnCfg').onclick = function(){ fillSheet(); $('#mask').classList.remove('hidden'); };
 $('#cfgClose').onclick = function(){
@@ -849,7 +1074,7 @@ $('#cfgClose').onclick = function(){
   var pt = $('#fParams').value.trim();
   if(pt){
     try{ s.params = JSON.parse(pt); }
-    catch(e){ alert('附加参数不是合法 JSON，已保留原值'); }
+    catch(e){ toastMsg('附加参数不是合法 JSON，已保留原值'); }
   } else s.params = {};
   saveCfg();
   $('#mask').classList.add('hidden');
@@ -867,15 +1092,7 @@ document.querySelectorAll('#autoSeg button').forEach(function(b){
 });
 
 /* ---------- 顶栏 ---------- */
-function fillPrompts(){
-  selEl.innerHTML = '';
-  PROMPTS.forEach(function(p){
-    var o = document.createElement('option');
-    o.value = p.name; o.textContent = p.name;
-    if(p.name === cfg.prompt) o.selected = true;
-    selEl.appendChild(o);
-  });
-}
+function fillPrompts(){ refreshPromptSelect(); }
 selEl.onchange = function(){ cfg.prompt = selEl.value; saveCfg(); };
 $('#btnNew').onclick = function(){
   if(busy){ stop(); }
