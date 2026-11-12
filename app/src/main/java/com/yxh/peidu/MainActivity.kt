@@ -364,6 +364,22 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun wikiLookup(base: String, query: String): String = WikiClient.lookup(base, query)
 
+        /** 异步版：立刻返回，结果通过 window.__onWiki(cbId, text) 回调，别让 JS 线程等网络 */
+        @JavascriptInterface
+        fun wikiLookupAsync(sourcesJson: String, query: String, cbId: String) {
+            Thread {
+                val r = try { WikiClient.lookup(sourcesJson, query) } catch (e: Throwable) { "" }
+                runOnUiThread {
+                    try {
+                        js(
+                            "window.__onWiki && window.__onWiki(" +
+                                JSONObject.quote(cbId) + "," + JSONObject.quote(r) + ")"
+                        )
+                    } catch (e: Throwable) { }
+                }
+            }.start()
+        }
+
         /** 直接截一张（设置面板里的「截屏试试」，也用来在悬浮球不好使时兜底） */
         @JavascriptInterface
         fun captureNow(): String {

@@ -45,7 +45,7 @@ body{
 .brand small{font-weight:400;color:var(--muted);font-size:10px;margin-left:3px}
 #promptSel{
   flex:1;min-width:0;appearance:none;background:var(--panel);color:var(--fg);
-  border:1px solid var(--line);border-radius:9px;padding:7px 22px 7px 9px;font-size:13px;
+  border:1px solid var(--line);border-radius:9px;padding:7px 22px 7px 9px;font-size:14px;
   background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
   background-position:calc(100% - 13px) 52%,calc(100% - 9px) 52%;
   background-size:4px 4px,4px 4px;background-repeat:no-repeat;
@@ -113,17 +113,22 @@ body{
 }
 #btnSend:active{background:var(--accent2)}
 #btnSend.stop{background:#c0392b}
-.hint{flex:0 0 auto;padding:0 12px 6px;font-size:11.5px;color:var(--muted);min-height:0}
-.msgactions{display:flex;gap:8px;margin-top:6px}
-.msgactions button{border:1px solid var(--line);background:var(--panel);color:var(--muted);
-  font-size:11.5px;padding:3px 10px;border-radius:7px}
+.hint{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:2px 12px 6px;font-size:12.5px;color:var(--muted);min-height:19px}
+.hint.live{color:var(--accent)}
+.hint .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 auto;opacity:0}
+.hint.live .dot{opacity:1;animation:hpulse 1.1s ease-in-out infinite}
+@keyframes hpulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.3)}}
+.msgactions{display:flex;gap:8px;margin-top:6px}.msgactions button{border:1px solid var(--line);background:var(--panel);color:var(--muted);
+  font-size:12.5px;padding:3px 10px;border-radius:7px}
 .msgactions button:active{background:var(--panel2)}
 .msgimg{max-width:100%;border-radius:9px;display:block;margin-bottom:6px;background:#000}
 .msgsize{font-size:10.5px;opacity:.65;margin-bottom:4px}
+.wikisrc{font-size:12px;color:var(--accent);background:rgba(47,111,235,.10);
+  border-left:3px solid var(--accent);padding:5px 9px;border-radius:6px;margin-bottom:8px;line-height:1.5}
 
 /* 服务 / 档位列表 */
 .itemlist{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
-.item{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
+.item{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);font-size:14.5px}
 .item:last-child{border-bottom:0}
 .item.cur{background:rgba(47,111,235,.09)}
 .item .wchk{width:17px;height:17px;flex:0 0 auto;accent-color:var(--accent);margin:0}
@@ -132,7 +137,7 @@ body{
 .ico.on{color:var(--accent);font-weight:700}
 .item .iname{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
 .item button{flex:0 0 auto;border:1px solid var(--line);background:transparent;color:var(--muted);
-  font-size:11.5px;padding:4px 10px;border-radius:7px}
+  font-size:12.5px;padding:4px 10px;border-radius:7px}
 .item button.danger{color:#e5484d;border-color:rgba(229,72,77,.35)}
 .item button.danger.armed{background:#e5484d;color:#fff;border-color:#e5484d}
 
@@ -140,7 +145,7 @@ body{
 .askbox{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);width:86%;max-width:420px;
   background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:16px;
   box-shadow:0 12px 40px rgba(0,0,0,.28)}
-.asktitle{font-size:13px;color:var(--muted);margin-bottom:10px}
+.asktitle{font-size:14px;color:var(--muted);margin-bottom:10px}
 .askbox input{width:100%;box-sizing:border-box;margin-bottom:12px}
 
 /* 权限提示条 */
@@ -160,7 +165,7 @@ body{
 #cropSel{position:absolute;border:2px solid #4c8dff;background:rgba(76,141,255,.18);
   box-shadow:0 0 0 9999px rgba(0,0,0,.45);display:none;pointer-events:none;border-radius:2px}
 .cropTip{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:50%;transform:translateX(-50%);
-  color:#fff;font-size:13px;background:rgba(0,0,0,.55);padding:7px 14px;border-radius:16px;z-index:3;white-space:nowrap}
+  color:#fff;font-size:14px;background:rgba(0,0,0,.55);padding:7px 14px;border-radius:16px;z-index:3;white-space:nowrap}
 .cropBar{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 18px);left:0;right:0;
   display:flex;gap:12px;justify-content:center;z-index:3}
 .cropBar button{padding:11px 22px;border-radius:11px;border:0;font-size:14px;
@@ -198,10 +203,10 @@ html.float-mode #dragBar{ display:flex }
 .seg{display:flex;gap:6px}
 .seg button{
   flex:1;padding:8px 0;border-radius:9px;border:1px solid var(--line);background:var(--panel);
-  color:var(--fg);font-size:13px
+  color:var(--fg);font-size:14px
 }
 .seg button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-.tip{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:6px}
+.tip{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:6px}
 </style>
 </head>
 <body>
@@ -214,7 +219,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.7.0</small></div>
+  <div class="brand">陪读<small id="ver">1.8.8</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="wikiBtn" title="查维基">☐</button>
   <button class="ico" id="btnNew" title="新话题">＋</button>
@@ -223,7 +228,7 @@ html.float-mode #dragBar{ display:flex }
 
 <main id="chat"></main>
 
-<div class="hint" id="hint"></div>
+<div class="hint" id="hint"><i class="dot"></i><span class="hintt"></span></div>
 
 <footer class="foot">
   <div class="quote hidden" id="quote">
@@ -295,9 +300,6 @@ html.float-mode #dragBar{ display:flex }
         <button id="ballOff">关闭</button>
       </div>
       <div class="tip" id="ballTip"></div>
-      <div class="seg" style="margin-top:8px">
-        <button id="capTry">截屏试试</button>
-      </div>
     </div>
 
     <div class="field">
@@ -366,7 +368,7 @@ var DEFAULT_CFG = {
   ],
   current: SEC.current || "deepseek",
   prompt: SEC.prompt || "翻译",
-  font: SEC.font || 14,
+  font: SEC.font || 16,
   theme:"auto",
   autoSend:true,
   wikiOn: !!SEC.wikiOn,
@@ -377,9 +379,11 @@ var DEFAULT_CFG = {
 };
 
 var cfg = loadCfg();
+migratePrompts();
 var messages = [];      // [{role, content}]
 var busy = false, curText = '', curThink = '', curEl = null, curBubble = null;
 var quote = '', quoteImg = '';
+var curWikiTitles = '';   // 这一轮用到的维基条目名，答完贴在气泡上方
 var t0 = 0, tickTimer = null, rafPending = false, lastRender = 0;
 
 /* ---------- 配置 ---------- */
@@ -445,6 +449,36 @@ function promptList(){
     cfg.prompts = JSON.parse(JSON.stringify(window.PEIDU_PROMPTS || []));
   }
   return cfg.prompts;
+}
+/* 内置的「维基百科」档提示词升级时，把用户本地那份也刷新（只动这一档，不碰自定义改过的其他档） */
+function migratePrompts(){
+  var VER = '7';   /* 放函数里：外面那个 var 在调用点还没赋值，会导致永远跳过 */
+  if(cfg.promptVer === VER) return 0;
+  /* 默认字号从 14 调到 16（整体界面偏小），老配置跟着调一次 */
+  if(!cfg.font || cfg.font === 14) cfg.font = 16;
+  var arr = promptList();
+  var changed = 0;
+  /* 1.8.7：之前给所有档位末尾加的那句「如果消息里带【维基资料】…」会让模型在
+     没有维基资料时反问「信息不足」，全部撤掉。来源说明改成只在真带资料时由消息本身要求。 */
+  var OLD = '（如果用户消息里带【维基资料】，说明这次查过维基百科：回答时必须明确指出哪些内容来自维基百科、出自哪个条目；资料以外的常识要标明是补充。）';
+  for(var i = 0; i < arr.length; i++){
+    var sys = arr[i].system || '';
+    if(sys.indexOf(OLD) >= 0){
+      arr[i].system = sys.replace(OLD, '').replace(/\s+$/, '');
+      changed++;
+    }
+  }
+  /* 1.8.8：陪读档只给一个词时模型会反问「信息不足」，补一句明确指令 */
+  var ADD = '用户只给一个词、短语或短句时，就当作「请解释这个」来处理：直接给出意思、要点或结论，不要反问「信息不足」，也不要要求补充完整问题。';
+  for(var j = 0; j < arr.length; j++){
+    if(arr[j].name === '陪读' && ((arr[j].system || '').indexOf('不要反问') < 0)){
+      arr[j].system = (arr[j].system || '').replace(/\s+$/, '') + '\n\n' + ADD;
+      changed++;
+    }
+  }
+  cfg.promptVer = VER;
+  saveCfg();
+  return changed;
 }
 window.__sysDark = null;
 window.__setSystemDark = function(v){ window.__sysDark = v; applyTheme(); };
@@ -680,7 +714,28 @@ function buildUserContent(q, img){
   arr.push({type:'image_url', image_url:{url:img}});
   return arr;
 }
-function send(){
+/* ---------- 异步查维基（不阻塞界面） ---------- */
+var wikiCbs = {};
+window.__onWiki = function(id, text){
+  var cb = wikiCbs[id];
+  if(cb){ delete wikiCbs[id]; cb(text || ''); }
+};
+function wikiLookupAsync(sources, q){
+  return new Promise(function(resolve){
+    var id = 'w' + Date.now() + Math.random().toString(36).slice(2, 6);
+    wikiCbs[id] = resolve;
+    try{
+      PeiduBridge.wikiLookupAsync(JSON.stringify(sources), q, id);
+    }catch(e){
+      delete wikiCbs[id]; resolve('');
+    }
+    setTimeout(function(){
+      if(wikiCbs[id]){ delete wikiCbs[id]; resolve(''); }
+    }, 25000);
+  });
+}
+
+async function send(){
   if(busy) return;
   var q = inputEl.value.trim();
   var img = quoteImg;
@@ -689,21 +744,44 @@ function send(){
   if(!q && img){ q = '解释这段'; }
   var p = promptByName(cfg.prompt);
 
-  // 维基：主界面打了勾，或当前档位本身带 wiki 标记，就去查（多源按顺序试）
+  /* 先上屏：消息和输入框立刻响应，维基慢慢查 */
+  busy = true;
+  setHint('发送中…', true);
+  addMsg('user', q, img);
+  inputEl.value = ''; autoGrow();
+  clearQuote();
+  scrollBottom();
+  sendEl.textContent = '停止'; sendEl.classList.add('stop');
+
   var wikiNote = '';
   var onWikis = (cfg.wikis || []).filter(function(x){ return x.on && x.base; });
-  if((p.wiki || cfg.wikiOn) && q && onWikis.length){
+  if(cfg.wikiOn && q && onWikis.length){
     try{
-      hintEl.textContent = '查维基中…';
-      var w = PeiduBridge.wikiLookup(JSON.stringify(onWikis), q);
+      setHint('查维基 · ' + onWikis.map(function(x){ return x.name; }).join(' / ') + '…', true);
+      var w = await wikiLookupAsync(onWikis, q);
       if(w){
-        wikiNote = '【维基资料】\n' + w + '\n\n';
-        hintEl.textContent = '';
+        var ts = (w.match(/《[^》]+》/g) || []);
+        curWikiTitles = ts.length ? ts.join('、') : '';
+        wikiNote = '【维基资料】（以下内容来自维基百科，回答时要明确说明来源是维基百科并写出条目名）\n' + w + '\n\n';
+        setHint('维基 ' + w.length + ' 字 · 发送中…', true);
       } else {
-        hintEl.textContent = '维基里没查到';
-        setTimeout(function(){ if(hintEl.textContent === '维基里没查到') hintEl.textContent = ''; }, 2500);
+        setHint('维基里没查到 · 发送中…', true);
       }
     }catch(e){ hintEl.textContent = ''; }
+  }
+
+  /* 维基档：没拿到资料就本地直说，绝不让模型凭记忆编 */
+  if(p.wiki && !wikiNote){
+    var why;
+    if(!cfg.wikiOn) why = '没有开启查维基：先在顶栏点 ☑ 维基。';
+    else if(!onWikis.length) why = '没有可用的维基源：到 ⚙ 里把「维基源」打钩。';
+    else why = '维基里没查到「' + q + '」，换个词试试，或确认 NAS 上的 Kiwix 开着。';
+    addMsg('ai', why);
+    setHint('已拦截 · 没拿到维基资料', false);
+    busy = false;
+    sendEl.textContent = '发送'; sendEl.classList.remove('stop');
+    scrollBottom();
+    return;
   }
 
   // 以模板包装
@@ -713,27 +791,29 @@ function send(){
            : (p.template + '\n\n' + q);
   }
   body = wikiNote + body;
-  if(!img && !q) return;
+  if(!busy) return;
 
-  addMsg('user', q, img);
   messages.push({role:'user', content: buildUserContent(body, img)});
-
-  inputEl.value = ''; autoGrow();
-  clearQuote();
   chatEl.appendChild(document.createElement('hr')).style.cssText='border:0';
 
-  busy = true; curText=''; curThink='';
+  curText=''; curThink='';
   curEl = document.createElement('div');
   curEl.className = 'msg ai';
   curBubble = document.createElement('div');
   curBubble.className = 'bubble';
   curEl.appendChild(curBubble);
   chatEl.appendChild(curEl);
+  /* 这一轮用了维基，就在气泡上方贴一条来源，不靠模型自觉 */
+  if(curWikiTitles){
+    var src = document.createElement('div');
+    src.className = 'wikisrc';
+    src.textContent = '📖 参考维基百科：' + curWikiTitles;
+    curEl.insertBefore(src, curBubble);
+  }
   scrollBottom();
 
-  sendEl.textContent = '停止'; sendEl.classList.add('stop');
   t0 = Date.now();
-  hintEl.textContent = '已发送…';
+  setHint('已发送 · 等待响应…', true);
   tickTimer = setInterval(tick, 500);
 
   var payload = {
@@ -748,8 +828,17 @@ function send(){
 function tick(){
   if(!busy) return;
   var s = ((Date.now()-t0)/1000).toFixed(0);
-  hintEl.textContent = curText ? ('生成中 · ' + s + 's · ' + curText.length + ' 字')
-                               : ('思考中… ' + s + 's');
+  if(curText) setHint('生成中 · ' + s + 's · ' + curText.length + ' 字', true);
+  else if(s >= 30) setHint('等待响应 ' + s + 's…可能网络或服务有问题', true);
+  else setHint('思考中 · ' + s + 's', true);
+}
+/* 状态条：圆点呼吸表示还活着，文字说明在干什么 */
+function setHint(text, live){
+  var h = hintEl; if(!h) return;
+  var t = h.querySelector('.hintt');
+  if(!t){ h.innerHTML = '<i class="dot"></i><span class="hintt"></span>'; t = h.querySelector('.hintt'); }
+  h.classList.toggle('live', !!live);
+  if(t) t.textContent = text || '';
 }
 function stop(){
   try{ PeiduBridge.stop(); }catch(e){}
@@ -759,8 +848,14 @@ function finish(aborted){
   busy = false;
   clearInterval(tickTimer); tickTimer = null;
   sendEl.textContent = '发送'; sendEl.classList.remove('stop');
-  if(aborted) hintEl.textContent = '已停止';
-  else if(curText) hintEl.textContent = '';
+  if(aborted){
+    setHint('已停止', false);
+    setTimeout(function(){ if(!busy) setHint('', false); }, 2000);
+  } else if(curText){
+    var sec = ((Date.now() - t0) / 1000).toFixed(1);
+    setHint('完成 · ' + sec + 's', false);
+    setTimeout(function(){ if(!busy) setHint('', false); }, 2500);
+  }
 }
 
 /* ---------- 桥回调 ---------- */
@@ -824,6 +919,7 @@ function clearMsgs(){
 window.__onDone = function(full){
   if(full) curText = full;
   curBubble.innerHTML = renderRich(curText);
+  curWikiTitles = '';
   messages.push({role:'assistant', content: curText});
   var lastUser = null;
   for(var i = messages.length - 2; i >= 0; i--){
@@ -881,8 +977,15 @@ function doSaveNote(answer, userMsg){
 function refreshNoteDir(){
   var n = '';
   try{ n = PeiduBridge.noteDirName() || ''; }catch(e){}
-  var t = $('#noteDirTip');
-  if(t) t.textContent = n ? ('已选：' + n) : '还没选。存笔记会追加到当天 YYYY-MM-DD.md，截图放 attachments/';
+  var t = $('#noteDirTip'), b = $('#noteDirBtn');
+  if(n){
+    var leaf = n.split('/').pop() || n;
+    if(b) b.textContent = leaf;
+    if(t) t.textContent = '已选：' + n;
+  } else {
+    if(b) b.textContent = '选择…';
+    if(t) t.textContent = '还没选。存笔记会追加到当天 YYYY-MM-DD.md，截图放 attachments/';
+  }
 }
 window.__onNoteDir = function(name){ refreshNoteDir(); };
 var noteDirBtnEl = $('#noteDirBtn');
@@ -890,8 +993,9 @@ if(noteDirBtnEl) noteDirBtnEl.onclick = function(){
   try{ PeiduBridge.pickNoteDir(); }catch(e){}
 };
 window.__onError = function(msg){
+  curWikiTitles = '';
   var d = document.createElement('div');
-  d.style.cssText = 'color:#e5484d;font-size:13px;margin-top:6px;white-space:pre-wrap';
+  d.style.cssText = 'color:#e5484d;font-size:14px;margin-top:6px;white-space:pre-wrap';
   d.textContent = '⚠ ' + msg;
   if(curBubble) curBubble.appendChild(d);
   if(!curText) curBubble.innerHTML = '';
@@ -1289,7 +1393,16 @@ function doCrop(r){
   closeCrop();
   quoteImg = dataUrl;
   quote = '';
-  send();
+  if(cfg.autoSend){
+    send();
+  } else {
+    /* 「选中文字后 = 只填入不发送」时，截图也照办：贴到输入框上方等用户自己点 */
+    var qb = $('#quote'), qt = $('#quoteText');
+    if(qt) qt.innerHTML = '<img src="' + dataUrl + '" style="max-height:96px;border-radius:6px;display:block">';
+    if(qb) qb.classList.remove('hidden');
+    if(inputEl) inputEl.focus();
+    setHint('截图已就位，点发送', false);
+  }
 }
 
 function closeCrop(){
@@ -1328,21 +1441,6 @@ if(ballOffEl) ballOffEl.onclick = function(){
   try{ PeiduBridge.stopBall(); }catch(e){}
   setTimeout(refreshBall, 400);
 };
-var capTryEl = $('#capTry');
-if(capTryEl) capTryEl.onclick = function(){
-  var r = 'ok';
-  try{ $('#mask').classList.add('hidden'); }catch(e){}
-  try{ r = PeiduBridge.captureNow(); }catch(e){ r = 'err'; }
-  if(r === 'no_a11y'){
-    var el = $('#ballTip');
-    if(el) el.textContent = '截屏服务没开：去无障碍里打开「陪读」再回来';
-    try{ PeiduBridge.openA11ySettings(); }catch(e){}
-  } else {
-    var el2 = $('#ballTip');
-    if(el2) el2.textContent = '正在截屏…';
-  }
-};
-
 /* ---------- 首页权限提示条 ---------- */
 var permDismissed = false;
 var permTries = 0;

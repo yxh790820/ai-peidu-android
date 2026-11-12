@@ -66,7 +66,21 @@ object WikiClient {
         return try {
             val books = books(base, lang)
             Log.i(TAG, "wiki books=$books")
-            val hits = LinkedHashMap<String, Pair<String, String>>()   // href -> (title, snippet)
+            // (href, 标题, 来源：0=直接命中 1=标题索引 2=全文)
+            val cand = ArrayList<Triple<String, String, Int>>()
+
+            /* 0) 先按关键词直接取同名条目。
+               Kiwix 的 suggest 索引不是全量的：搜「美国」它只给「美国，美国」「BBC美国」，
+               真正的《美国》条目根本不在标题索引里，只能直接请求。 */
+            for (b in books) {
+                try {
+                    val direct = article(base, "/content/" + b + "/" + enc(q))
+                    if (direct.length > 60) {
+                        Log.i(TAG, "wiki 直接命中 " + b + "/" + q + " len=" + direct.length)
+                        return "《" + q + "》\n" + direct
+                    }
+                } catch (e: Throwable) { }
+            }
 
             // 1) 标题索引优先
             for (b in books) {
@@ -80,7 +94,7 @@ object WikiClient {
                         if (path.isEmpty()) continue
                         val name = o.optString("value", path)
                         if (!name.contains(q) && !path.contains(q)) continue
-                        hits["/content/$b/$path"] = name to ""
+                        cand.add(Triple("/content/$b/$path", name, 0))
                     }
                 } catch (e: Throwable) { /* 这本书没有标题索引，跳过 */ }
             }
@@ -94,23 +108,37 @@ object WikiClient {
                 ).matcher(html)
                 while (m.find()) {
                     val href = m.group(1) ?: continue
-                    if (hits.containsKey(href)) continue
-                    hits[href] = stripHtml(m.group(2) ?: "") to stripHtml(m.group(3) ?: "")
+                    cand.add(Triple(href, stripHtml(m.group(2) ?: ""), 1))
                 }
             } catch (e: Throwable) { }
 
-            Log.i(TAG, "wiki hits=${hits.size} first=${hits.keys.take(2)}")
+            /* 排序照电脑版：标题和关键词完全相同的最前，其次以关键词开头的，再按标题由短到长。
+               不排的话搜「中国」会先拿到「2K中国」「谷歌中国」这类。 */
+            val seen = HashSet<String>()
+            val hits = cand
+                .filter { seen.add(it.first) }
+                .sortedWith(
+                    compareBy(
+                        { if (it.second == q) 0 else if (it.second.startsWith(q)) 1 else 2 },
+                        { it.second.length },
+                        { it.third }
+                    )
+                )
+            Log.i(TAG, "wiki hits=${hits.size} first=${hits.take(3).map { it.second }}")
             if (hits.isEmpty()) return ""
 
             // 3) 取前两条正文
             val sb = StringBuilder()
             var n = 0
-            for ((href, pair) in hits) {
+            for (t in hits) {
                 if (n >= 2) break
-                val body = try { article(base, href) } catch (e: Throwable) { "" }
+                val body = try { article(base, t.first) } catch (e: Throwable) { "" }
                 if (body.isBlank()) continue
-                sb.append("《").append(pair.first).append("》\n").append(body).append("\n\n")
+                sb.append("《").append(t.second).append("》\n").append(body).append("\n\n")
                 n++
+                /* 标题和关键词一模一样的就是正主（搜「中国」拿到《中国》），
+                   别再拿「2K中国」「谷歌中国」这种同名条目凑第二篇 */
+                if (t.second == q) break
             }
             sb.toString().trim().take(3200)
         } catch (e: Throwable) {
@@ -180,7 +208,8 @@ object WikiClient {
                 out.add(try { java.net.URLDecoder.decode(raw, "UTF-8") } catch (e: Throwable) { raw })
             }
         }
-        return out.take(3)
+        /* 维基百科的书排前面：其他书（如水木清华）的标题索引会混进一堆同名条目 */
+        return out.sortedByDescending { if (it.contains("wikipedia", true)) 1 else 0 }.take(3)
     }
 
     /** 只抓 <p> 段落：整页 350KB 上跑全文正则会把栈打爆，只取正文段落又快又稳 */

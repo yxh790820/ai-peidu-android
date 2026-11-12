@@ -19,8 +19,8 @@ android {
         applicationId "com.yxh.peidu"
         minSdk 24
         targetSdk 34
-        versionCode 13
-        versionName "1.7.0"
+        versionCode 27
+        versionName "1.8.8"
     }
 
     signingConfigs {

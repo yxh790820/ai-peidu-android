@@ -39,21 +39,26 @@ object NoteStore {
             .apply()
     }
 
-    /** 把 content:// 的 tree uri 变成人能看懂的一小段（取最后两级） */
+    /** 把 content:// 的 tree uri 变成人能看懂的完整路径（主存储/Download/…/陪读） */
     fun prettyName(uri: Uri): String {
         val raw = try {
             DocumentsContract.getTreeDocumentId(uri)
         } catch (e: Throwable) {
             uri.lastPathSegment ?: ""
         }
-        val parts = raw.replace("%3A", ":").replace("%2F", "/").split("/", ":")
+        return raw.replace("%3A", ":").replace("%2F", "/")
+            .split("/", ":")
             .filter { it.isNotBlank() }
-        return if (parts.size <= 2) parts.joinToString("/")
-        else parts.takeLast(2).joinToString("/")
+            .map { if (it == "primary") "主存储" else it }
+            .joinToString("/")
     }
 
-    fun dirName(ctx: Context): String = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        .getString(KEY_NAME, "") ?: ""
+    /** 每次都从保存的 URI 现算，老的只有短名的配置也能显示成全路径 */
+    fun dirName(ctx: Context): String {
+        val uriStr = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_URI, null) ?: return ""
+        return try { prettyName(Uri.parse(uriStr)) } catch (e: Throwable) { "" }
+    }
 
     /**
      * payload: {text, question, answer, service, prompt, image(dataURL 或空)}
