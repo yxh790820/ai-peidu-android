@@ -358,6 +358,12 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun saveNote(payload: String): String = NoteStore.save(this@MainActivity, payload)
 
+        // ---------- 维基 ----------
+
+        /** 查局域网 Kiwix，返回拼好的资料正文（查不到返回空串） */
+        @JavascriptInterface
+        fun wikiLookup(base: String, query: String): String = WikiClient.lookup(base, query)
+
         /** 直接截一张（设置面板里的「截屏试试」，也用来在悬浮球不好使时兜底） */
         @JavascriptInterface
         fun captureNow(): String {

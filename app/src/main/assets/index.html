@@ -212,7 +212,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.5.0</small></div>
+  <div class="brand">陪读<small id="ver">1.6.0</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="btnNew" title="新话题">＋</button>
   <button class="ico" id="btnCfg" title="设置">⚙</button>
@@ -305,6 +305,12 @@ html.float-mode #dragBar{ display:flex }
       <div class="tip" id="noteDirTip"></div>
     </div>
 
+    <div class="field">
+      <label>维基地址（局域网 Kiwix）</label>
+      <input id="fWiki" placeholder="http://192.168.2.99:8060">
+      <div class="tip">「维基百科」档位会用这个地址查条目。NAS 不开着时这一档就不给资料。</div>
+    </div>
+
     <div class="tip">手机和电脑在同一个 WiFi 下时，可以把 base 填成电脑的局域网地址（如 http://192.168.2.10:18080）直接用本地模型。</div>
 
     <div class="field">
@@ -358,7 +364,8 @@ var DEFAULT_CFG = {
   prompt: SEC.prompt || "翻译",
   font: SEC.font || 14,
   theme:"auto",
-  autoSend:true
+  autoSend:true,
+  wikiBase: SEC.wikiBase || "http://192.168.2.99:8060"
 };
 
 var cfg = loadCfg();
@@ -381,6 +388,7 @@ function loadCfg(){
         if(o.font) d.font = o.font;
         if(o.theme) d.theme = o.theme;
         if(typeof o.autoSend === 'boolean') d.autoSend = o.autoSend;
+        if(o.wikiBase) d.wikiBase = o.wikiBase;
         if(o.geom && typeof o.geom === 'object') d.geom = o.geom;
         if(Array.isArray(o.prompts) && o.prompts.length) d.prompts = o.prompts;
       }
@@ -666,12 +674,29 @@ function send(){
   if(!q && img){ q = '解释这段'; }
   var p = promptByName(cfg.prompt);
 
+  // 维基档：先查局域网 Kiwix，把资料拼到正文前面
+  var wikiNote = '';
+  if(p.wiki && q){
+    try{
+      hintEl.textContent = '查维基中…';
+      var w = PeiduBridge.wikiLookup(cfg.wikiBase || '', q);
+      if(w){
+        wikiNote = '【维基资料】\n' + w + '\n\n';
+        hintEl.textContent = '';
+      } else {
+        hintEl.textContent = '维基里没查到';
+        setTimeout(function(){ if(hintEl.textContent === '维基里没查到') hintEl.textContent = ''; }, 2500);
+      }
+    }catch(e){ hintEl.textContent = ''; }
+  }
+
   // 以模板包装
   var body = q;
   if(p.template){
     body = p.template.indexOf('$content') >= 0 ? p.template.replace(/\$content/g, q)
            : (p.template + '\n\n' + q);
   }
+  body = wikiNote + body;
   if(!img && !q) return;
 
   addMsg('user', q, img);
@@ -904,6 +929,7 @@ function fillSheet(){
   $('#fModel').value = s.model || '';
   $('#fKey').value = s.key || '';
   $('#fParams').value = s.params ? JSON.stringify(s.params) : '';
+  $('#fWiki').value = cfg.wikiBase || '';
   $('#fsVal').textContent = cfg.font + 'px';
   document.querySelectorAll('#themeSeg button').forEach(function(b){
     b.classList.toggle('on', b.dataset.t === cfg.theme);
@@ -1076,6 +1102,7 @@ $('#cfgClose').onclick = function(){
     try{ s.params = JSON.parse(pt); }
     catch(e){ toastMsg('附加参数不是合法 JSON，已保留原值'); }
   } else s.params = {};
+  cfg.wikiBase = $('#fWiki').value.trim();
   saveCfg();
   $('#mask').classList.add('hidden');
   hintEl.textContent = '';
