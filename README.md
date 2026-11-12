@@ -1,5 +1,21 @@
 # AI 陪读 · 安卓版（PeiduDroid）
 
+**English** | 中文
+
+An Android reading assistant: **select text in any app → tap "Peidu" → a floating card answers** without leaving your book. APK ~3.8 MB, no Python / Termux / runtime needed.
+
+- **Ask three ways**: selected text (system menu), floating ball → crop a screen region (scanned books, formulas, charts), or share from other apps
+- **Save to Obsidian**: pick a folder once (SAF, **no storage permission**); each answer appends to today's `YYYY-MM-DD.md`, screenshots go to `attachments/`
+- **Wikipedia lookup**: local Kiwix + official Wikipedia, any number of sources; the ☑ toggle in the toolbar is the master switch — when it's off the app says "Wikipedia is not enabled" instead of letting the model guess
+- **Everything editable**: services (base / model / key / params) and prompt presets can be added, renamed, deleted; edit system prompt and template inline
+- KaTeX math, dark / light theme, font size 11–22, live status line showing what it's doing right now
+- Android 7.0+ · no API key bundled · [Releases](../../releases)
+- 💻 Windows version: [ai-peidu](https://github.com/yxh790820/ai-peidu)
+
+---
+
+## 中文
+
 把 [AI 陪读小窗](https://github.com/yxh790820/ai-peidu) 搬到手机上：**选中文字 → 点「陪读」→ 半屏小窗弹出来，原来的读书 App 还在上面**，问完点一下就退回，接着看。
 
 > **💻 电脑版（Windows）**：[**AI 陪读小窗**](https://github.com/yxh790820/ai-peidu) —— 常驻托盘，`Ctrl+Alt+A` 取词、`Ctrl+Alt+S` 框选截图，同一套提示词档位和维基检索，还能一键存进 Obsidian。
