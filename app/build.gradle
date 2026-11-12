@@ -19,8 +19,8 @@ android {
         applicationId "com.yxh.peidu"
         minSdk 24
         targetSdk 34
-        versionCode 33
-        versionName "1.9.5"
+        versionCode 35
+        versionName "1.9.7"
     }
 
     signingConfigs {
@@ -56,6 +56,12 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
+
+    /* 单元测试跑在 JVM 上：WikiClient 里的 android.util.Log 直接返回默认值，
+       这样检索逻辑（简繁变体 / 英文回退）能在电脑上直接连局域网 Kiwix 验，不用每次都装模拟器 */
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -64,4 +70,8 @@ dependencies {
     implementation 'androidx.documentfile:documentfile:1.0.1'
     implementation 'androidx.webkit:webkit:1.11.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    testImplementation 'junit:junit:4.13.2'
+    /* 单元测试里要用真的 org.json：mockable android.jar 那个是空实现（length() 恒 0），
+       不换成真实现的话 lookup() 会直接空手返回，看起来像「代码没生效」 */
+    testImplementation 'org.json:json:20240303'
 }

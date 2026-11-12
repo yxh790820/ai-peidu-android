@@ -18,6 +18,9 @@ keystore.properties
 # 本地私密配置：里面有 API Key，绝不提交
 app/src/main/assets/secrets.js
 
+# 日志（构建/测试的临时输出）
+*.log
+
 # 系统
 .DS_Store
 Thumbs.db
