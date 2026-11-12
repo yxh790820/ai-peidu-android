@@ -126,8 +126,10 @@ body{
 .item{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13.5px}
 .item:last-child{border-bottom:0}
 .item.cur{background:rgba(47,111,235,.09)}
+.item .wchk{width:17px;height:17px;flex:0 0 auto;accent-color:var(--accent);margin:0}
 .item .dot{width:7px;height:7px;border-radius:50%;background:var(--line);flex:0 0 auto}
 .item.cur .dot{background:var(--accent)}
+.ico.on{color:var(--accent);font-weight:700}
 .item .iname{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)}
 .item button{flex:0 0 auto;border:1px solid var(--line);background:transparent;color:var(--muted);
   font-size:11.5px;padding:4px 10px;border-radius:7px}
@@ -212,8 +214,9 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.6.0</small></div>
+  <div class="brand">陪读<small id="ver">1.7.0</small></div>
   <select id="promptSel"></select>
+  <button class="ico" id="wikiBtn" title="查维基">☐</button>
   <button class="ico" id="btnNew" title="新话题">＋</button>
   <button class="ico" id="btnCfg" title="设置">⚙</button>
 </header>
@@ -306,9 +309,10 @@ html.float-mode #dragBar{ display:flex }
     </div>
 
     <div class="field">
-      <label>维基地址（局域网 Kiwix）</label>
-      <input id="fWiki" placeholder="http://192.168.2.99:8060">
-      <div class="tip">「维基百科」档位会用这个地址查条目。NAS 不开着时这一档就不给资料。</div>
+      <label>维基源</label>
+      <div class="itemlist" id="wikiList"></div>
+      <div class="seg" style="margin-top:8px"><button id="wikiAdd">＋ 添加维基源</button></div>
+      <div class="tip">打钩的按顺序查，拿到资料就停。本地 Kiwix 要 NAS 开着；官方维基要能连外网。</div>
     </div>
 
     <div class="tip">手机和电脑在同一个 WiFi 下时，可以把 base 填成电脑的局域网地址（如 http://192.168.2.10:18080）直接用本地模型。</div>
@@ -365,7 +369,11 @@ var DEFAULT_CFG = {
   font: SEC.font || 14,
   theme:"auto",
   autoSend:true,
-  wikiBase: SEC.wikiBase || "http://192.168.2.99:8060"
+  wikiOn: !!SEC.wikiOn,
+  wikis: [
+    { id:"kiwix",    name:"本地 Kiwix", type:"kiwix",     base:"http://192.168.2.99:8060", on:true },
+    { id:"official", name:"官方维基",   type:"mediawiki", base:"https://zh.wikipedia.org",  on:true }
+  ]
 };
 
 var cfg = loadCfg();
@@ -388,7 +396,14 @@ function loadCfg(){
         if(o.font) d.font = o.font;
         if(o.theme) d.theme = o.theme;
         if(typeof o.autoSend === 'boolean') d.autoSend = o.autoSend;
-        if(o.wikiBase) d.wikiBase = o.wikiBase;
+        if(typeof o.wikiOn === 'boolean') d.wikiOn = o.wikiOn;
+        if(Array.isArray(o.wikis) && o.wikis.length) d.wikis = o.wikis;
+        /* 老版本只有一个 wikiBase，迁到本地 Kiwix 那项 */
+        if(o.wikiBase && Array.isArray(d.wikis)){
+          for(var wi = 0; wi < d.wikis.length; wi++){
+            if(d.wikis[wi].id === 'kiwix'){ d.wikis[wi].base = o.wikiBase; break; }
+          }
+        }
         if(o.geom && typeof o.geom === 'object') d.geom = o.geom;
         if(Array.isArray(o.prompts) && o.prompts.length) d.prompts = o.prompts;
       }
@@ -674,12 +689,13 @@ function send(){
   if(!q && img){ q = '解释这段'; }
   var p = promptByName(cfg.prompt);
 
-  // 维基档：先查局域网 Kiwix，把资料拼到正文前面
+  // 维基：主界面打了勾，或当前档位本身带 wiki 标记，就去查（多源按顺序试）
   var wikiNote = '';
-  if(p.wiki && q){
+  var onWikis = (cfg.wikis || []).filter(function(x){ return x.on && x.base; });
+  if((p.wiki || cfg.wikiOn) && q && onWikis.length){
     try{
       hintEl.textContent = '查维基中…';
-      var w = PeiduBridge.wikiLookup(cfg.wikiBase || '', q);
+      var w = PeiduBridge.wikiLookup(JSON.stringify(onWikis), q);
       if(w){
         wikiNote = '【维基资料】\n' + w + '\n\n';
         hintEl.textContent = '';
@@ -929,7 +945,6 @@ function fillSheet(){
   $('#fModel').value = s.model || '';
   $('#fKey').value = s.key || '';
   $('#fParams').value = s.params ? JSON.stringify(s.params) : '';
-  $('#fWiki').value = cfg.wikiBase || '';
   $('#fsVal').textContent = cfg.font + 'px';
   document.querySelectorAll('#themeSeg button').forEach(function(b){
     b.classList.toggle('on', b.dataset.t === cfg.theme);
@@ -939,6 +954,8 @@ function fillSheet(){
   });
   renderSvcList();
   renderPrList();
+  renderWikiList();
+  refreshWikiBtn();
 }
 
 /* ---------- 服务列表 ---------- */
@@ -975,6 +992,73 @@ function delSvc(s){
   if(cfg.current === s.id) cfg.current = cfg.services[0].id;
   saveCfg(); fillSheet();
 }
+
+/* ---------- 维基源列表 ---------- */
+function renderWikiList(){
+  var box = $('#wikiList'); if(!box) return;
+  box.innerHTML = '';
+  (cfg.wikis || []).forEach(function(w){
+    var row = document.createElement('div');
+    row.className = 'item' + (w.on ? ' cur' : '');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'wchk'; cb.checked = !!w.on;
+    cb.onchange = function(ev){
+      ev.stopPropagation();
+      w.on = cb.checked; saveCfg(); renderWikiList();
+    };
+    var nm = document.createElement('span');
+    nm.className = 'iname';
+    nm.textContent = w.name + (w.type === 'mediawiki' ? ' · 官方' : ' · 本地');
+    nm.onclick = function(ev){
+      ev.stopPropagation();
+      askText('维基源名称', w.name, function(v){ if(v){ w.name = v; saveCfg(); fillSheet(); } });
+    };
+    var ab = document.createElement('button'); ab.textContent = '地址';
+    ab.onclick = function(ev){
+      ev.stopPropagation();
+      askText('地址（Kiwix 填 http://IP:8060；官方填 https://zh.wikipedia.org）', w.base, function(v){
+        if(!v) return;
+        w.base = v;
+        w.type = /wikipedia|mediawiki/i.test(v) ? 'mediawiki' : 'kiwix';
+        saveCfg(); fillSheet();
+      });
+    };
+    var db = document.createElement('button'); db.className = 'danger'; db.textContent = '删除';
+    db.onclick = function(ev){
+      ev.stopPropagation();
+      armDelete(db, function(){ delWiki(w); });
+    };
+    row.appendChild(cb); row.appendChild(nm); row.appendChild(ab); row.appendChild(db);
+    box.appendChild(row);
+  });
+}
+function delWiki(w){
+  if((cfg.wikis || []).length <= 1){ toastMsg('至少要留一个维基源'); return; }
+  var i = cfg.wikis.indexOf(w);
+  if(i >= 0) cfg.wikis.splice(i, 1);
+  saveCfg(); fillSheet();
+}
+$('#wikiAdd').onclick = function(){
+  askText('新维基源地址（Kiwix 填 http://IP:8060；官方填 https://zh.wikipedia.org）', '', function(v){
+    if(!v) return;
+    var type = /wikipedia|mediawiki/i.test(v) ? 'mediawiki' : 'kiwix';
+    cfg.wikis.push({
+      id: 'w' + Date.now().toString(36),
+      name: type === 'mediawiki' ? '官方维基' : '新维基源',
+      type: type, base: v, on: true
+    });
+    saveCfg(); fillSheet();
+  });
+};
+function refreshWikiBtn(){
+  var b = $('#wikiBtn'); if(!b) return;
+  b.textContent = cfg.wikiOn ? '☑' : '☐';
+  b.classList.toggle('on', !!cfg.wikiOn);
+}
+$('#wikiBtn').onclick = function(){
+  cfg.wikiOn = !cfg.wikiOn;
+  saveCfg(); refreshWikiBtn();
+};
 
 /* ---------- 档位列表 ---------- */
 function renderPrList(){
@@ -1102,7 +1186,6 @@ $('#cfgClose').onclick = function(){
     try{ s.params = JSON.parse(pt); }
     catch(e){ toastMsg('附加参数不是合法 JSON，已保留原值'); }
   } else s.params = {};
-  cfg.wikiBase = $('#fWiki').value.trim();
   saveCfg();
   $('#mask').classList.add('hidden');
   hintEl.textContent = '';
@@ -1304,6 +1387,7 @@ document.addEventListener('visibilitychange', function(){
 /* ---------- 默认记录 ---------- */
 restoreMsgs();
 checkPerms();
+refreshWikiBtn();
 setTimeout(checkPerms, 1200);
 if(!messages.length && !chatEl.childNodes.length){
   var hi = document.createElement('div');

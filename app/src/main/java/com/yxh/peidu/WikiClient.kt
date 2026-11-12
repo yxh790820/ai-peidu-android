@@ -1,9 +1,13 @@
 package com.yxh.peidu
 
 import android.util.Log
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONObject
+import java.net.Inet4Address
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
@@ -21,15 +25,44 @@ object WikiClient {
     private const val TAG = "peidu"
     private const val DEFAULT_BASE = "http://192.168.2.99:8060"
     private val client = OkHttpClient.Builder()
-        .connectTimeout(4, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(14, TimeUnit.SECONDS)
+        /* 很多手机网络/模拟器 IPv6 是假的，连 2001:… 会一直超时；强制优先 IPv4 */
+        .dns(object : Dns {
+            override fun lookup(hostname: String): List<java.net.InetAddress> {
+                val all = Dns.SYSTEM.lookup(hostname)
+                val v4 = all.filter { it is Inet4Address }
+                return if (v4.isNotEmpty()) v4 else all
+            }
+        })
         .build()
 
-    /** 返回拼好的【维基资料】正文；查不到或连不上返回空串 */
-    fun lookup(baseIn: String, queryIn: String, lang: String = "zho"): String {
-        val base = (if (baseIn.isBlank()) DEFAULT_BASE else baseIn).trim().trimEnd('/')
+    /** 多源查询：sourcesJson = [{name,type,base,on}]，按顺序试，第一个有结果的返回 */
+    fun lookup(sourcesJson: String, queryIn: String, lang: String = "zho"): String {
         val q = queryIn.trim()
         if (q.isEmpty()) return ""
+        val arr = try { JSONArray(sourcesJson) } catch (e: Throwable) { JSONArray() }
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val base = o.optString("base").trim()
+            if (base.isEmpty()) continue
+            val name = o.optString("name", "维基")
+            val type = o.optString("type", "kiwix")
+            val r = try {
+                if (type == "mediawiki") lookupMw(base, q) else lookupKiwix(base, q, lang)
+            } catch (e: Throwable) {
+                Log.w(TAG, "wiki 源 " + name + " 失败", e)
+                ""
+            }
+            if (r.isNotBlank()) return "【" + name + "】\n" + r
+        }
+        return ""
+    }
+
+    /** 单个 Kiwix 源 */
+    private fun lookupKiwix(baseIn: String, queryIn: String, lang: String = "zho"): String {
+        val base = (if (baseIn.isBlank()) DEFAULT_BASE else baseIn).trim().trimEnd('/')
+        val q = queryIn.trim()
         return try {
             val books = books(base, lang)
             Log.i(TAG, "wiki books=$books")
@@ -84,6 +117,52 @@ object WikiClient {
             Log.w(TAG, "wiki lookup 异常", e)
             ""
         }
+    }
+
+    /** 官方维基（MediaWiki Action API）：list=search 找条目 + TextExtracts 取纯文本首段 */
+    private fun lookupMw(baseIn: String, q: String): String {
+        val base = mwHost(baseIn)
+        val sUrl = base + "/w/api.php?action=query&format=json&formatversion=2&variant=zh-cn&list=search&srsearch=" + enc(q) + "&srlimit=3"
+        Log.i(TAG, "mw 开始 " + sUrl)
+        val raw = get(sUrl)
+        Log.i(TAG, "mw 搜索返回=" + (raw?.length ?: -1))
+        val sj = JSONObject(raw ?: return "")
+        val hits = sj.optJSONObject("query")?.optJSONArray("search") ?: return ""
+        val titles = ArrayList<String>()
+        for (i in 0 until minOf(hits.length(), 3)) {
+            val t = hits.optJSONObject(i)?.optString("title") ?: continue
+            if (t.isNotBlank()) titles.add(t)
+        }
+        Log.i(TAG, "mw 搜到 " + titles.size + " 条")
+        if (titles.isEmpty()) return ""
+        val sb = StringBuilder()
+        var n = 0
+        for (t in titles) {
+            if (n >= 2) break
+            val eUrl = base + "/w/api.php?action=query&format=json&formatversion=2&variant=zh-cn&prop=extracts&explaintext=1&exlimit=1&redirects=1&titles=" + enc(t)
+            val ej = JSONObject(get(eUrl) ?: continue)
+            val pages = ej.optJSONObject("query")?.optJSONArray("pages") ?: continue
+            for (i in 0 until pages.length()) {
+                val p = pages.optJSONObject(i) ?: continue
+                val ex = p.optString("extract")
+                if (ex.isBlank()) continue
+                sb.append("《").append(p.optString("title", t)).append("》\n")
+                sb.append(ex.trim()).append("\n\n")
+                n++
+                break
+            }
+        }
+        val out = sb.toString().trim()
+        Log.i(TAG, "mw 正文长度=" + out.length)
+        return out.take(3200)
+    }
+
+    /** 把 https://zh.wikipedia.org/wiki/xxx 或 …/w/api.php 归一到 https://zh.wikipedia.org */
+    private fun mwHost(b: String): String {
+        var s = b.trim()
+        if (!s.startsWith("http")) s = "https://" + s
+        s = s.substringBefore("/w/api.php").substringBefore("/api.php").substringBefore("/wiki/")
+        return s.trimEnd('/')
     }
 
     /** 列出某语言的所有 ZIM 书（取前 3 本，够用且快） */
@@ -156,6 +235,7 @@ object WikiClient {
             if (!r.isSuccessful) null else r.body?.string()
         }
     } catch (e: Throwable) {
+        Log.w(TAG, "wiki GET 失败 " + url.take(120), e)
         null
     }
 
