@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingCapture = false
     private var pendingPromptPicker = false
     private var pendingHome = false
+    private var pendingPaste = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -223,13 +224,22 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             ACTION_HOME -> {
-                // 菜单「主页」：按取词那种半屏浮窗打开（不是全屏）
+                // 菜单「主页」：半屏浮窗打开。
+                // 剪贴板不能在这里读 —— Android 10 起只有真正位于前台的 App 才允许读，
+                // onNewIntent 这一刻 App 往往还没拿到焦点，读到的是 null（模拟器不明显，真机必现）。
+                // 先记标记，等 onWindowFocusChanged 有了焦点再读。
                 floatMode = true
                 applyWindowMode()
+                pendingPaste = true
                 if (pageReady) {
                     js("window.__setFloat && window.__setFloat(true)")
                 } else {
                     pendingHome = true
+                }
+                // 如果本来就在前台（用户就在陪读界面点球），不会再触发 onWindowFocusChanged，这里直接读
+                if (hasWindowFocus() && ::web.isInitialized) {
+                    pendingPaste = false
+                    web.postDelayed({ pasteClipboard(0) }, 300)
                 }
             }
             ACTION_EXIT -> {
@@ -293,6 +303,50 @@ class MainActivity : AppCompatActivity() {
         if (pendingHome) {
             pendingHome = false
             js("window.__setFloat && window.__setFloat(true)")
+        }
+    }
+
+    /** 窗口拿到焦点后再读剪贴板（Android 10+ 只有前台 App 能读） */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && pendingPaste) {
+            pendingPaste = false
+            if (::web.isInitialized) {
+                // 系统把 App 认成前台可能滞后一点，先等一下再读
+                web.postDelayed({ pasteClipboard(0) }, 350)
+            }
+        }
+    }
+
+    private fun pasteClipboard(attempt: Int) {
+        if (!::web.isInitialized) return
+        if (!pageReady) {
+            if (attempt < 4) web.postDelayed({ pasteClipboard(attempt + 1) }, 300)
+            return
+        }
+        val clip = readClipboard()
+        android.util.Log.i("peidu", "剪贴板读取: ${clip?.length ?: 0} 字")
+        if (!clip.isNullOrBlank()) {
+            js("window.__onClipboard && window.__onClipboard(${JSONObject.quote(clip)})")
+            return
+        }
+        // 还是空：可能系统还没把 App 算作前台，再试两次
+        if (attempt < 2) web.postDelayed({ pasteClipboard(attempt + 1) }, 400)
+    }
+
+    /** 读剪贴板文字：只在用户主动点「主页」时调用，不在后台偷读 */
+    private fun readClipboard(): String? {
+        return try {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val c = cm.primaryClip ?: return null
+            if (c.itemCount == 0) return null
+            val item = c.getItemAt(0)
+            // 先直接取 text（最快最稳），拿不到再退回 coerceToText（URI 之类）
+            val t = item.text?.toString() ?: item.coerceToText(this)?.toString()
+            t?.trim()?.takeIf { it.isNotEmpty() }
+        } catch (e: Throwable) {
+            android.util.Log.w("peidu", "读剪贴板失败: ${e.message}")
+            null
         }
     }
 

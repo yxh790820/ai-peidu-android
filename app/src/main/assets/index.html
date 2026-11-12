@@ -233,7 +233,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.9.2</small></div>
+  <div class="brand">陪读<small id="ver">1.9.4</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="wikiBtn" title="查维基">☐</button>
   <button class="ico" id="btnNew" title="新话题">＋</button>
@@ -1028,6 +1028,20 @@ window.__onIntent = function(text){
   showQuote(text, '');
   if(cfg.autoSend){ setTimeout(send, 60); }
   else inputEl.focus();
+};
+
+/** 悬浮球菜单「主页」：把剪贴板内容填进输入框，只填入不发送（发不发由用户点） */
+window.__onClipboard = function(text){
+  if(!text) return;
+  var cur = (inputEl.value || '').trim();
+  inputEl.value = cur ? (cur + '\n' + text) : text;
+  try{
+    inputEl.focus();
+    inputEl.selectionStart = inputEl.selectionEnd = inputEl.value.length;
+    inputEl.dispatchEvent(new Event('input'));
+    if(typeof autosizeInput === 'function') autosizeInput();
+  }catch(e){}
+  setHint('已粘贴剪贴板内容，点「发送」再问', false);
 };
 window.__onImage = function(dataUrl){
   showQuote(quote || '', dataUrl);
