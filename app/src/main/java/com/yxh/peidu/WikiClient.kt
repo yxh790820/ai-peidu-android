@@ -24,6 +24,8 @@ import java.util.regex.Pattern
  */
 
 private const val EN_NOTE = "（下面是英文条目，请用中文回答）\n"
+/* 资料只是条目节选：写进数据里，别改 system —— 通用 system 加条件句会让模型在别的场景反问 */
+private const val EXCERPT_NOTE = "（说明：下面是条目节选，通常只到条目的前几段。按已有内容讲就行，不必说明「资料不完整」「内容被截断」。）\n"
 
 object WikiClient {
 
@@ -50,21 +52,75 @@ object WikiClient {
            「三國演義」「軟件自由」这种只查用户输入那一种字形会漏。原词永远排在最前。 */
         val variants = ZhConv.variants(q)
         val arr = try { JSONArray(sourcesJson) } catch (e: Throwable) { JSONArray() }
+        /* 总预算 15 秒：JS 那边 25 秒会兜底，留出余量；源多、外网又慢时宁可少查一个源也别让用户干等 */
+        val deadline = System.currentTimeMillis() + 15_000
         for (i in 0 until arr.length()) {
+            if (System.currentTimeMillis() > deadline) {
+                Log.i(TAG, "维基检索超预算，剩下的源不查了")
+                break
+            }
             val o = arr.optJSONObject(i) ?: continue
             val base = o.optString("base").trim()
             if (base.isEmpty()) continue
             val name = o.optString("name", "维基")
             val type = o.optString("type", "kiwix")
+            if (!reachable(base)) {
+                Log.i(TAG, "wiki 源连不上，跳过：" + name + " " + base)
+                continue
+            }
             val r = try {
                 if (type == "mediawiki") lookupMw(base, variants) else kiwixLookup(base, variants, lang)
             } catch (e: Throwable) {
                 Log.w(TAG, "wiki 源 " + name + " 失败", e)
                 ""
             }
-            if (r.isNotBlank()) return "【" + name + "】\n" + r
+            if (r.isNotBlank()) return "【" + name + "】\n" + EXCERPT_NOTE + r
         }
         return ""
+    }
+
+    /**
+     * 按长度截断，但切在最后一个句末（。！？换行）上。
+     *
+     * 原来直接 `take(1400)` 会把句子切成半截，模型看到「是各」「影響也」这种残句，
+     * 就会在回答里写「资料到此截断／未完整」——用户看到的就是「维基结果经常中断」。
+     */
+    internal fun cutClean(text: String, limit: Int): String {
+        if (text.length <= limit) return text
+        val head = text.substring(0, limit)
+        /* 优先切在句末；没有句末就退到段落换行；两样都太靠前（前 1/3 内）才按字数切 */
+        val sent = maxOf(head.lastIndexOf('。'), head.lastIndexOf('！'), head.lastIndexOf('？'),
+                         head.lastIndexOf('!'), head.lastIndexOf('?'))
+        val nl = head.lastIndexOf('\n')
+        val idx = if (sent > limit / 3) sent else if (nl > limit / 3) nl else -1
+        return if (idx >= 0) head.substring(0, idx + 1).trimEnd() else head
+    }
+
+    /** base → (探测时间, 通不通)；20 秒内不重复探（太久会让「刚打开 NAS 却还说连不上」） */
+    private val aliveCache = HashMap<String, Pair<Long, Boolean>>()
+
+    /**
+     * TCP 探活：本地 Kiwix 关机时，一次提问要发 4~6 个请求，每个都要等满 8 秒连接超时，
+     * 加起来 40 秒+，JS 那边 25 秒就兜底返回空 → 用户看到「没查到」，而后面的官方维基根本没轮到。
+     * 所以每个源先花最多 2 秒探一下，通不通立刻决定，别再逐个请求等超时。
+     */
+    private fun reachable(base: String, timeoutMs: Int = 2000): Boolean {
+        val now = System.currentTimeMillis()
+        val hit = aliveCache[base]
+        if (hit != null && now - hit.first < 20_000) return hit.second
+        var ok = false
+        try {
+            val u = java.net.URI(if (base.contains("://")) base else "http://" + base)
+            val port = if (u.port > 0) u.port else if (u.scheme == "https") 443 else 80
+            val host = u.host ?: ""
+            if (host.isNotEmpty()) {
+                java.net.Socket().use { it.connect(java.net.InetSocketAddress(host, port), timeoutMs); ok = true }
+            }
+        } catch (e: Throwable) {
+            ok = false
+        }
+        aliveCache[base] = Pair(now, ok)
+        return ok
     }
 
     /** /content 的路径区分大小写：小写词再补一个首字母大写写法（china → China） */
@@ -140,7 +196,8 @@ object WikiClient {
             // 2) 全文检索（简繁两种字形都搜：索引里的正文可能只有一种字形）
             for (v in queries) {
                 try {
-                    val html = get("$base/search?pattern=${enc(v)}&books.filter.lang=$lang&pageLength=8") ?: ""
+                    /* 热门短词（日本/中国）前十几条几乎全是 Category: 页面，只取 8 条被剔完就等于没搜到 */
+                    val html = get("$base/search?pattern=${enc(v)}&books.filter.lang=$lang&pageLength=20") ?: ""
                     val m = Pattern.compile(
                         "<li>\\s*<a href=\"([^\"]+)\"[^>]*>\\s*(.*?)\\s*</a>\\s*<cite>(.*?)</cite>",
                         Pattern.DOTALL
@@ -192,13 +249,13 @@ object WikiClient {
                 if (body.isBlank()) continue
                 /* 简繁两条常常是同一篇文章（中国 / 中國），别让它占掉第二个名额 */
                 if (!seenBody.add(body.take(300))) continue
-                sb.append("《").append(t.second).append("》\n").append(body).append("\n\n")
+                sb.append("《").append(t.second).append("》（节选）\n").append(body).append("\n\n")
                 n++
                 /* 标题和关键词一模一样的就是正主（搜「中国」拿到《中国》），
                    别再拿「2K中国」「谷歌中国」这种同名条目凑第二篇 */
                 if (queries.any { t.second.equals(it, true) }) break
             }
-            sb.toString().trim().take(3200)
+            cutClean(sb.toString().trim(), 5600)
         } catch (e: Throwable) {
             Log.w(TAG, "wiki lookup 异常", e)
             ""
@@ -304,7 +361,8 @@ object WikiClient {
         val out = StringBuilder()
         try {
             val m = Pattern.compile("<p(?:\\s[^>]*)?>(.*?)</p>", Pattern.DOTALL).matcher(html)
-            while (m.find() && out.length < 2000) {
+            /* 收集到 3600 就停：下面要按句末切到 2500，得留出把最后一句补完整的余量 */
+            while (m.find() && out.length < 3600) {
                 val t = stripInline(m.group(1) ?: "")
                 if (t.length > 12) out.append(t).append("\n")
             }
@@ -312,8 +370,9 @@ object WikiClient {
             Log.w(TAG, "wiki 取段落失败", e)
         }
         val r = out.toString().replace(Regex("\\[\\d+]"), "").trim()
-        Log.i(TAG, "wiki article len=" + r.length + " " + href.take(40))
-        return r.take(1400)
+        val body = cutClean(r, 2500)
+        Log.i(TAG, "wiki article len=" + body.length + "(原文" + r.length + ") " + href.take(40))
+        return body
     }
 
     /** 小片段去标签（只用于 <p> 内容和搜索摘要，不会碰上巨型正则） */

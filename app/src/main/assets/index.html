@@ -233,7 +233,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.9.7</small></div>
+  <div class="brand">陪读<small id="ver">1.9.11</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="wikiBtn" title="查维基">☐</button>
   <button class="ico" id="btnNew" title="新话题">＋</button>
@@ -817,7 +817,8 @@ async function send(){
     var why;
     if(!cfg.wikiOn) why = '没有开启查维基：先在顶栏点 ☑ 维基。';
     else if(!onWikis.length) why = '没有可用的维基源：到 ⚙ 里把「维基源」打钩。';
-    else why = '维基里没查到「' + q + '」，换个词试试，或确认 NAS 上的 Kiwix 开着。';
+    else why = '维基里没查到「' + q + '」。这次查过：' + onWikis.map(function(x){ return x.name; }).join('、') +
+               '。本地 Kiwix 要先确认 NAS 开着（同一个 WiFi）；官方维基要能连外网。也可以换个词再试。';
     addMsg('ai', why);
     setHint('已拦截 · 没拿到维基资料', false);
     busy = false;

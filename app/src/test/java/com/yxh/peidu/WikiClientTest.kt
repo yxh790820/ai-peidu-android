@@ -54,6 +54,21 @@ class WikiClientTest {
     }
 
     @Test
+    fun `截断切在句末`() {
+        /* 硬截会在句子中间断开，模型就会说「资料到此截断」——这是用户反馈的「维基结果经常中断」 */
+        val text = "第一句话说明背景。" + "第二句话继续解释这个概念，内容比较长。".repeat(80) + "最后一句。"
+        val cut = WikiClient.cutClean(text, 200)
+        assertTrue("太长: " + cut.length, cut.length <= 200)
+        val last = cut.last()
+        assertTrue("切在字中间了: …" + cut.takeLast(12),
+                   !(last.isLetterOrDigit() || last.code in 0x4E00..0x9FFF))
+        /* 短文本原样返回 */
+        assertEquals("短句。", WikiClient.cutClean("短句。", 100))
+        /* 整段没有句号时按字数切，不能把内容切没 */
+        assertEquals(60, WikiClient.cutClean("没".repeat(300), 60).length)
+    }
+
+    @Test
     fun `小写拉丁词能命中大写条目`() {
         assumeTrue("NAS 上的 Kiwix 没开，跳过", nasUp())
         /* 用户实测反馈：打「china」说查不到。三处原因（都已修）：
@@ -74,6 +89,48 @@ class WikiClientTest {
         val r = WikiClient.lookup(sources, "hoare logic")
         assertTrue("标题索引没命中: " + r.take(120), r.length > 200)
         assertTrue("条目名不对: " + r.take(120), r.contains("Hoare", true))
+    }
+
+    @Test
+    fun `资料带节选说明且末尾切在句末`() {
+        assumeTrue("NAS 上的 Kiwix 没开，跳过", nasUp())
+        val r = WikiClient.lookup(sources, "中国")
+        assertTrue("缺节选说明: " + r.take(120), r.contains("节选"))
+        val t = r.trimEnd()
+        assertTrue("末尾不是句末（会被模型说成资料截断）: …" + t.takeLast(20),
+                   t.endsWith("。") || t.endsWith("！") || t.endsWith("？"))
+    }
+
+    @Test
+    fun `本地源连不上要立刻跳到下一个源`() {
+        /* 用户实测：本地 Kiwix 和官方维基都勾上，NAS 一关就说「没查到」——因为死源每个请求都要等满 8 秒，
+           四五次就把 JS 的 25 秒兜底耗光，后面的官方维基根本轮不到。这里用不可达地址 + 桩服务器验证：
+           死源要被 2 秒探活快速跳过，第二个源正常出结果。 */
+        val srv = stubKiwix()
+        try {
+            val src = """[
+              {"id":"dead","name":"本地 Kiwix","type":"kiwix","base":"http://10.255.255.1:8060","on":true},
+              {"id":"ok","name":"备用","type":"kiwix","base":"${srv.url}","on":true}
+            ]"""
+            val t0 = System.currentTimeMillis()
+            val r = WikiClient.lookup(src, "Hoare logic")
+            val ms = System.currentTimeMillis() - t0
+            assertTrue("没落到第二个源: " + r.take(120), r.contains("Hoare"))
+            assertTrue("死源拖太久: " + ms + "ms", ms < 6000)
+        } finally {
+            srv.stop()
+        }
+    }
+
+    @Test
+    fun `短词要先拿到同名条目`() {
+        assumeTrue("NAS 上的 Kiwix 没开，跳过", nasUp())
+        /* 用户实测（电脑版）：搜「日本」取到的是《BS日本》《CS日本》。原因是 Kiwix 的 /suggest
+           索引里根本没有《日本》（只有 .日本 / BS日本 / Amazon日本…），全文前 8 条又全是
+           Category: 页面。这里守住：直取得优先，《日本》必须排在第一个。 */
+        val r = WikiClient.lookup(sources, "日本")
+        val first = Regex("《([^》]+)》").find(r)?.groupValues?.get(1) ?: ""
+        assertEquals("日本", first)
     }
 
     @Test
