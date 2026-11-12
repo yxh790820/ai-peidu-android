@@ -233,7 +233,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.9.4</small></div>
+  <div class="brand">陪读<small id="ver">1.9.5</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="wikiBtn" title="查维基">☐</button>
   <button class="ico" id="btnNew" title="新话题">＋</button>
@@ -466,7 +466,7 @@ function promptList(){
 }
 /* 内置的「维基百科」档提示词升级时，把用户本地那份也刷新（只动这一档，不碰自定义改过的其他档） */
 function migratePrompts(){
-  var VER = '7';   /* 放函数里：外面那个 var 在调用点还没赋值，会导致永远跳过 */
+  var VER = '8';   /* 放函数里：外面那个 var 在调用点还没赋值，会导致永远跳过 */
   if(cfg.promptVer === VER) return 0;
   /* 默认字号从 14 调到 16（整体界面偏小），老配置跟着调一次 */
   if(!cfg.font || cfg.font === 14) cfg.font = 16;
@@ -487,6 +487,24 @@ function migratePrompts(){
   for(var j = 0; j < arr.length; j++){
     if(arr[j].name === '陪读' && ((arr[j].system || '').indexOf('不要反问') < 0)){
       arr[j].system = (arr[j].system || '').replace(/\s+$/, '') + '\n\n' + ADD;
+      changed++;
+    }
+  }
+  /* 1.9.5：截图问的默认文本改成按档位来 —— 原来所有档位都塞「解释这段」，
+     翻译档会把这四个字当成待翻译内容、图片完全被忽略 */
+  var ASK = {
+    '翻译': '请翻译图中所有外文',
+    '润色': '请润色图中的文字',
+    '总结': '请总结图中的内容',
+    '拼音+简单解释': '请给图中的文字加拼音和简单解释',
+    '古文今译': '请把图中的文言文翻译成现代汉语',
+    '古文纯译': '请把图中的文言文翻译成通顺的现代汉语',
+    '截图转公式': '请把图中的公式转成 LaTeX'
+  };
+  for(var k = 0; k < arr.length; k++){
+    var nm = arr[k].name;
+    if(ASK[nm] && !arr[k].imgAsk){
+      arr[k].imgAsk = ASK[nm];
       changed++;
     }
   }
@@ -760,8 +778,13 @@ async function send(){
   var img = quoteImg;
   if(!q && !img && !quote) return;
   if(!q && quote){ q = quote; }
-  if(!q && img){ q = '解释这段'; }
   var p = promptByName(cfg.prompt);
+  /* 只有图片、没有用户文字：用档位自己的截图问法（翻译档就该说“翻译图中外文”，不能说“解释这段”） */
+  var imgOnly = false;
+  if(!q && img){
+    q = p.imgAsk || '请解释图中的内容';
+    imgOnly = true;
+  }
 
   /* 先上屏：消息和输入框立刻响应，维基慢慢查 */
   busy = true;
@@ -837,7 +860,7 @@ async function send(){
 
   var payload = {
     base: svc().base, key: svc().key, model: svc().model,
-    messages: [{role:'system', content: p.system || ''}].concat(messages),
+    messages: [{role:'system', content: (p.system || '') + (imgOnly ? '\n\n【注意】这条消息只有一张图片、没有用户文字。请直接处理图片里的内容本身，不要把上面那句指令文字当作要处理的对象。' : '')}].concat(messages),
     params: svc().params || {}
   };
   try{ PeiduBridge.chat(JSON.stringify(payload)); }
