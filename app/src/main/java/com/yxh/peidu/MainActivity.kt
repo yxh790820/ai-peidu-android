@@ -128,7 +128,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun isFloatIntent(i: Intent?): Boolean {
         val a = i?.action ?: return false
-        return a == Intent.ACTION_PROCESS_TEXT || a == Intent.ACTION_SEND || a == ACTION_CAPTURE || a == ACTION_PROMPT
+        return a == Intent.ACTION_PROCESS_TEXT || a == Intent.ACTION_SEND || a == ACTION_CAPTURE || a == ACTION_PROMPT || a == ACTION_HOME
     }
 
     /** 把内存里那张截屏以 JPEG 形式喂给 WebView（不落地、不经过 JS 字符串） */
@@ -223,11 +223,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             ACTION_HOME -> {
-                // 菜单「主页」：不管当前 Java 状态如何，强制网页回全屏形态
-                floatMode = false
+                // 菜单「主页」：按取词那种半屏浮窗打开（不是全屏）
+                floatMode = true
                 applyWindowMode()
                 if (pageReady) {
-                    js("window.__setFloat && window.__setFloat(false)")
+                    js("window.__setFloat && window.__setFloat(true)")
                 } else {
                     pendingHome = true
                 }
@@ -292,7 +292,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (pendingHome) {
             pendingHome = false
-            js("window.__setFloat && window.__setFloat(false)")
+            js("window.__setFloat && window.__setFloat(true)")
         }
     }
 
