@@ -207,9 +207,23 @@ html.float-mode #dragBar{ display:flex }
 }
 .seg button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .tip{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:6px}
+#ppicker{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+#ppicker.hidden{display:none}
+#ppCard{background:var(--panel,#1e2130);border-radius:16px;padding:12px;width:min(78%,320px);max-height:68vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.45)}
+#ppTitle{font-size:12.5px;color:var(--muted);padding:2px 6px 8px}
+.ppItem{padding:12px 14px;border-radius:10px;font-size:15px;color:var(--fg);display:flex;align-items:center;justify-content:space-between}
+.ppItem.cur{background:rgba(47,111,235,.16);color:var(--accent);font-weight:600}
+.ppItem:active{background:rgba(127,127,127,.15)}
 </style>
 </head>
 <body>
+
+<div id="ppicker" class="hidden">
+  <div id="ppCard">
+    <div id="ppTitle">切换档位</div>
+    <div id="ppList"></div>
+  </div>
+</div>
 
 <div id="sheet">
 <div id="dragBar"><span></span></div>
@@ -219,7 +233,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.8.8</small></div>
+  <div class="brand">陪读<small id="ver">1.9.1</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="wikiBtn" title="查维基">☐</button>
   <button class="ico" id="btnNew" title="新话题">＋</button>
@@ -499,6 +513,11 @@ function applyGeom(){
 }
 window.__setFloat = function(g){
   document.documentElement.classList.toggle('float-mode', !!g);
+  if(!g){
+    // 退出浮窗时必须清掉拖动留下的内联定位，否则 #sheet 还停在半屏位置
+    sheetEl.style.top = '';
+    sheetEl.style.height = '';
+  }
   applyGeom();
 };
 
@@ -1195,6 +1214,37 @@ function delPrompt(i){
   if(cfg.prompt === gone.name) cfg.prompt = arr[0].name;
   saveCfg(); refreshPromptSelect(); fillSheet();
 }
+/** 悬浮球菜单「切档位」→ 原生调这里：弹出档位选择浮层 */
+window.__openPromptPicker = function(){
+  var box = document.getElementById('ppicker');
+  var list = document.getElementById('ppList');
+  if(!box || !list) return;
+  list.innerHTML = '';
+  (cfg.prompts || []).forEach(function(p){
+    var d = document.createElement('div');
+    d.className = 'ppItem' + (p.name === cfg.prompt ? ' cur' : '');
+    var n = document.createElement('span');
+    n.textContent = p.name;
+    d.appendChild(n);
+    if(p.name === cfg.prompt){
+      var k = document.createElement('span');
+      k.textContent = '✓';
+      d.appendChild(k);
+    }
+    d.onclick = function(){
+      cfg.prompt = p.name;
+      saveCfg(); refreshPromptSelect();
+      box.classList.add('hidden');
+      try{ if(window.PeiduBridge && PeiduBridge.toast) PeiduBridge.toast('已切到：' + p.name); }catch(e){}
+    };
+    list.appendChild(d);
+  });
+  box.classList.remove('hidden');
+};
+document.getElementById('ppicker').addEventListener('click', function(e){
+  if(e.target === this) this.classList.add('hidden');
+});
+
 function refreshPromptSelect(){
   selEl.innerHTML = '';
   promptList().forEach(function(p){

@@ -15,7 +15,10 @@ import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -226,8 +229,135 @@ class FloatingBallService : Service() {
         v.alpha = 0.72f
     }
 
+    private var menuView: View? = null
+
     private fun onBallClick() {
-        Log.i(TAG, "点了悬浮球")
+        Log.i(TAG, "点了悬浮球：弹菜单")
+        showBallMenu()
+    }
+
+    /**
+     * 球旁弹菜单：截图 / 主页 / 切档位 / 退出。
+     * 用自绘的全屏 overlay 而不是 PopupWindow —— overlay 窗口上 PopupWindow 的
+     * showAtLocation 坐标会被系统忽略（永远跑到屏幕角上），自己加一层才贴得住球。
+     */
+    private fun showBallMenu() {
+        dismissMenu()
+        val dm = resources.displayMetrics
+        val sz = dp(46f)
+        val gap = dp(10f)
+        val pad = dp(10f)
+        val items = 4
+        val mw = sz + pad * 2
+        val mh = sz * items + gap * (items - 1) + pad * 2
+
+        val root = FrameLayout(this).apply {
+            // 全屏透明，点空白处收起菜单
+            isClickable = true
+            setOnClickListener { dismissMenu() }
+        }
+
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(pad, pad, pad, pad)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(22f).toFloat()
+                setColor(0xF21C2130.toInt())
+                setStroke(dp(1f), 0x33FFFFFF)
+            }
+            // 面板自身吞掉点击，避免点在面板空白处就收起
+            isClickable = true
+        }
+
+        fun addItem(emoji: String, color: Int, onClick: () -> Unit) {
+            val t = TextView(this).apply {
+                text = emoji
+                setTextColor(Color.WHITE)
+                textSize = 21f
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(color)
+                }
+                setOnClickListener {
+                    dismissMenu()
+                    onClick()
+                }
+            }
+            val ip = LinearLayout.LayoutParams(sz, sz)
+            if (col.childCount > 0) ip.topMargin = gap
+            col.addView(t, ip)
+        }
+
+        addItem("📷", 0xE62F6FEB.toInt()) { doCapture() }
+        addItem("🏠", 0xE62A9E63.toInt()) { openMain() }
+        addItem("🔄", 0xE68A5A2B.toInt()) { openPromptPicker() }
+        addItem("✕", 0xE6C0392B.toInt()) { exitPeidu() }
+
+        // 贴着球：球在右半边 → 菜单在左；反之在右。垂直方向对齐球心，越界夹回屏幕内
+        val onRight = lp.x + lp.width / 2 > dm.widthPixels / 2
+        val mx = if (onRight) lp.x - mw - dp(8f) else lp.x + lp.width + dp(8f)
+        val my = (lp.y + lp.height / 2 - mh / 2)
+            .coerceIn(dp(8f), (dm.heightPixels - mh - dp(8f)).coerceAtLeast(dp(8f)))
+
+        root.addView(col, FrameLayout.LayoutParams(mw, mh).apply {
+            leftMargin = mx.coerceIn(0, (dm.widthPixels - mw).coerceAtLeast(0))
+            topMargin = my
+        })
+
+        val wlp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= 26)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 0
+        }
+
+        try {
+            wm.addView(root, wlp)
+            menuView = root
+        } catch (e: Throwable) {
+            Log.w(TAG, "菜单弹出失败: ${e.message}")
+            menuView = null
+        }
+    }
+
+    private fun dismissMenu() {
+        menuView?.let { try { wm.removeView(it) } catch (e: Throwable) {} }
+        menuView = null
+    }
+
+    /** 退出陪读：收掉球和通知，再把界面关掉（ball_on 保持 1，下次打开 App 球还会回来） */
+    private fun exitPeidu() {
+        Log.i(TAG, "菜单：退出陪读")
+        val i = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_EXIT
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
+        }
+        try { startActivity(i) } catch (e: Throwable) {}
+        stopSelf()
+    }
+
+    private fun doCapture() {
+        dismissMenu()
+        // 菜单是独立窗口，dismiss 之后要等它真正从屏幕上撤掉，否则会被截进图里
+        ball?.postDelayed({ realCapture() }, 150)
+    }
+
+    private fun realCapture() {
         if (!PeiduScreenService.isAlive) {
             // 无障碍掉了：别静默失败，弹通知引导恢复
             Notify.accessibilityLost(this)
@@ -250,8 +380,26 @@ class FloatingBallService : Service() {
         }
     }
 
+    private fun openMain() {
+        Log.i(TAG, "菜单：打开主界面")
+        val i = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_HOME
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        try { startActivity(i) } catch (e: Throwable) { Notify.toast(this, "打开失败：${e.message}") }
+    }
+
+    private fun openPromptPicker() {
+        val i = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_PROMPT
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        try { startActivity(i) } catch (e: Throwable) { Notify.toast(this, "打开失败：${e.message}") }
+    }
+
     override fun onDestroy() {
         running = false
+        dismissMenu()
         // 只有自己还是当前实例时才清空，避免旧实例把新实例的引用打掉（重启竞态）
         if (inst === this) inst = null
         ball?.let { try { wm.removeView(it) } catch (e: Throwable) {} }

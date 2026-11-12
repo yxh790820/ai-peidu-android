@@ -32,6 +32,12 @@ class MainActivity : AppCompatActivity() {
     companion object {
         /** 点悬浮球截完屏后拉起本页，进入框选 */
         const val ACTION_CAPTURE = "com.yxh.peidu.CAPTURE"
+        /** 从悬浮球菜单「切档位」进来，打开档位选择浮层 */
+        const val ACTION_PROMPT = "com.yxh.peidu.PROMPT"
+        /** 从悬浮球菜单「主页」进来，强制全屏形态 */
+        const val ACTION_HOME = "com.yxh.peidu.HOME"
+        /** 从悬浮球菜单「退出」进来，关掉界面 */
+        const val ACTION_EXIT = "com.yxh.peidu.EXIT"
         private const val REQ_PICK_DIR = 1001
     }
 
@@ -42,6 +48,8 @@ class MainActivity : AppCompatActivity() {
     private var pageReady = false
     private var floatMode = false
     private var pendingCapture = false
+    private var pendingPromptPicker = false
+    private var pendingHome = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,13 +117,18 @@ class MainActivity : AppCompatActivity() {
             floatMode = true
             applyWindowMode()
             js("window.__setFloat && window.__setFloat(true)")
+        } else if (!isFloatIntent(intent) && floatMode) {
+            // 从悬浮球菜单「主页」进来：退回全屏形态
+            floatMode = false
+            applyWindowMode()
+            js("window.__setFloat && window.__setFloat(false)")
         }
         handleIntent(intent)
     }
 
     private fun isFloatIntent(i: Intent?): Boolean {
         val a = i?.action ?: return false
-        return a == Intent.ACTION_PROCESS_TEXT || a == Intent.ACTION_SEND || a == ACTION_CAPTURE
+        return a == Intent.ACTION_PROCESS_TEXT || a == Intent.ACTION_SEND || a == ACTION_CAPTURE || a == ACTION_PROMPT
     }
 
     /** 把内存里那张截屏以 JPEG 形式喂给 WebView（不落地、不经过 JS 字符串） */
@@ -202,6 +215,27 @@ class MainActivity : AppCompatActivity() {
                     pendingCapture = true
                 }
             }
+            ACTION_PROMPT -> {
+                if (pageReady) {
+                    js("window.__openPromptPicker && window.__openPromptPicker()")
+                } else {
+                    pendingPromptPicker = true
+                }
+            }
+            ACTION_HOME -> {
+                // 菜单「主页」：不管当前 Java 状态如何，强制网页回全屏形态
+                floatMode = false
+                applyWindowMode()
+                if (pageReady) {
+                    js("window.__setFloat && window.__setFloat(false)")
+                } else {
+                    pendingHome = true
+                }
+            }
+            ACTION_EXIT -> {
+                // 菜单「退出」：把界面从最近任务里也清掉
+                finishAndRemoveTask()
+            }
             Intent.ACTION_PROCESS_TEXT -> {
                 val t = i.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
                 if (!t.isNullOrBlank()) {
@@ -251,6 +285,14 @@ class MainActivity : AppCompatActivity() {
         if (img != null) {
             pendingImage = null
             js("window.__onImage && window.__onImage(${JSONObject.quote(img)})")
+        }
+        if (pendingPromptPicker) {
+            pendingPromptPicker = false
+            js("window.__openPromptPicker && window.__openPromptPicker()")
+        }
+        if (pendingHome) {
+            pendingHome = false
+            js("window.__setFloat && window.__setFloat(false)")
         }
     }
 
