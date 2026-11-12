@@ -2,6 +2,8 @@
 
 把 [AI 陪读小窗](https://github.com/yxh790820/ai-peidu) 搬到手机上：**选中文字 → 点「陪读」→ 半屏小窗弹出来，原来的读书 App 还在上面**，问完点一下就退回，接着看。
 
+> **💻 电脑版（Windows）**：[**AI 陪读小窗**](https://github.com/yxh790820/ai-peidu) —— 常驻托盘，`Ctrl+Alt+A` 取词、`Ctrl+Alt+S` 框选截图，同一套提示词档位和维基检索，还能一键存进 Obsidian。
+
 ![悬浮小窗](docs/screenshot.png)
 
 > WebView 壳（界面是一个单文件 HTML）+ 原生只做系统入口、流式转发、窗口形态、截屏取图、维基检索、存笔记。APK 约 3.8 MB，手机不用装 Python / Termux / 任何运行库。
