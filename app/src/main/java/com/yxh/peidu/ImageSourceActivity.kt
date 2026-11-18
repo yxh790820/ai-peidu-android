@@ -61,7 +61,7 @@ class ImageSourceActivity : Activity() {
 
         val captured = photo
         if (captured != null && captured.length() > 0) {
-            deliver(photoUri(captured))
+            deliver(photoUri(captured), crop = true)
             return
         }
 
@@ -100,11 +100,12 @@ class ImageSourceActivity : Activity() {
         }.start()
     }
 
-    private fun deliver(uri: Uri) {
+    private fun deliver(uri: Uri, crop: Boolean = false) {
         startActivity(Intent(this, MainActivity::class.java)
             .setAction(Intent.ACTION_SEND)
             .setType("image/*")
             .putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(MainActivity.EXTRA_CROP_PHOTO, crop)
             .apply { clipData = ClipData.newRawUri("image", uri) }
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         finish()

@@ -233,7 +233,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.9.12</small></div>
+  <div class="brand">陪读<small id="ver">1.9.14</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="wikiBtn" title="查维基">☐</button>
   <button class="ico" id="btnNew" title="新话题">＋</button>
@@ -263,7 +263,8 @@ html.float-mode #dragBar{ display:flex }
   <div class="cropTip" id="cropTip">在屏幕上拖一个框，框住要问的那一段</div>
   <div class="cropBar">
     <button class="ghost" id="cropCancel">取消</button>
-    <button id="cropOk" style="display:none">就用这块</button>
+    <button id="cropWhole" style="display:none" disabled>用整张</button>
+    <button id="cropOk" style="display:none" disabled>用选区</button>
   </div>
 </div>
 
@@ -1411,13 +1412,36 @@ var cropImgEl = document.getElementById('cropImg');
 var cropSelEl = document.getElementById('cropSel');
 var cropDown = false, cropX0 = 0, cropY0 = 0, cropRect = null;
 
-window.__onCapture = function(){
+var cropPhoto = '';
+var cropWhole = document.getElementById('cropWhole');
+var cropOk = document.getElementById('cropOk');
+
+function openCrop(src, photo){
+  cropPhoto = photo;
   cropSelEl.style.display = 'none';
   cropRect = null; cropDown = false;
-  cropImgEl.src = '/shot/current.jpg?t=' + Date.now();
+  cropWhole.style.display = photo ? '' : 'none';
+  cropOk.style.display = photo ? '' : 'none';
+  cropWhole.disabled = true;
+  cropOk.disabled = true;
+  if(document.activeElement) document.activeElement.blur();
   cropLayerEl.classList.remove('hidden');
-  var tip = document.getElementById('cropTip');
-  if(tip) tip.textContent = '拖一个框，框住要问的那一段';
+  document.getElementById('cropTip').textContent = photo
+    ? '拖动框选要问的部分，也可以用整张'
+    : '拖一个框，框住要问的那一段';
+  cropImgEl.src = src;
+}
+
+window.__onCapture = function(){
+  openCrop('/shot/current.jpg?t=' + Date.now(), '');
+};
+window.__onPhoto = function(dataUrl){
+  openCrop(dataUrl, dataUrl);
+};
+cropImgEl.onload = function(){ cropWhole.disabled = false; };
+cropImgEl.onerror = function(){
+  if(!window.__closeCrop()) return;
+  setHint('无法打开图片预览，请重新取图', true);
 };
 
 function imgBox(){
@@ -1429,10 +1453,12 @@ function imgBox(){
 }
 
 cropImgEl.addEventListener('pointerdown', function(e){
-  if(cropLayerEl.classList.contains('hidden')) return;
+  if(cropLayerEl.classList.contains('hidden') || !cropImgEl.naturalWidth || cropDown) return;
   var ib = imgBox();
   if(e.clientX < ib.x || e.clientX > ib.x + ib.w || e.clientY < ib.y || e.clientY > ib.y + ib.h) return;
   cropDown = true;
+  cropRect = null;
+  cropOk.disabled = true;
   cropX0 = e.clientX; cropY0 = e.clientY;
   cropSelEl.style.display = 'block';
   cropSelEl.style.left = e.clientX + 'px';
@@ -1444,8 +1470,11 @@ cropImgEl.addEventListener('pointerdown', function(e){
 
 cropImgEl.addEventListener('pointermove', function(e){
   if(!cropDown) return;
-  var x = Math.min(cropX0, e.clientX), y = Math.min(cropY0, e.clientY);
-  var w = Math.abs(e.clientX - cropX0), h = Math.abs(e.clientY - cropY0);
+  var ib = imgBox();
+  var endX = Math.max(ib.x, Math.min(e.clientX, ib.x + ib.w));
+  var endY = Math.max(ib.y, Math.min(e.clientY, ib.y + ib.h));
+  var x = Math.min(cropX0, endX), y = Math.min(cropY0, endY);
+  var w = Math.abs(endX - cropX0), h = Math.abs(endY - cropY0);
   cropSelEl.style.left = x + 'px';
   cropSelEl.style.top = y + 'px';
   cropSelEl.style.width = w + 'px';
@@ -1462,8 +1491,20 @@ cropImgEl.addEventListener('pointerup', function(e){
     cropSelEl.style.display = 'none';
     return;
   }
-  doCrop(r);
+  if(cropPhoto) cropOk.disabled = false;
+  else doCrop(r);
 });
+cropImgEl.addEventListener('pointercancel', function(){
+  cropDown = false;
+  cropRect = null;
+  cropOk.disabled = true;
+  cropSelEl.style.display = 'none';
+});
+cropOk.onclick = function(){ if(cropRect) doCrop(cropRect); };
+cropWhole.onclick = function(){
+  var photo = cropPhoto;
+  if(closeCrop() && photo) window.__onImage(photo);
+};
 
 function doCrop(r){
   var ib = imgBox();
@@ -1478,7 +1519,12 @@ function doCrop(r){
   c.height = Math.round(sh);
   c.getContext('2d').drawImage(cropImgEl, sx, sy, sw, sh, 0, 0, c.width, c.height);
   var dataUrl = c.toDataURL('image/jpeg', 0.92);
+  var photo = !!cropPhoto;
   closeCrop();
+  if(photo){
+    window.__onImage(dataUrl);
+    return;
+  }
   quoteImg = dataUrl;
   quote = '';
   if(cfg.autoSend){
@@ -1494,11 +1540,15 @@ function doCrop(r){
 }
 
 function closeCrop(){
+  if(cropLayerEl.classList.contains('hidden')) return false;
+  cropPhoto = '';
   cropLayerEl.classList.add('hidden');
   cropSelEl.style.display = 'none';
   cropImgEl.removeAttribute('src');
   try{ PeiduBridge.clearShot(); }catch(err){}
+  return true;
 }
+window.__closeCrop = closeCrop;
 document.getElementById('cropCancel').onclick = closeCrop;
 
 /* ---------- 悬浮球开关 ---------- */

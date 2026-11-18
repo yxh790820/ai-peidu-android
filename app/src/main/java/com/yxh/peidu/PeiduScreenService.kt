@@ -3,7 +3,6 @@ package com.yxh.peidu
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.graphics.Bitmap
-import android.hardware.HardwareBuffer
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.util.Log
@@ -24,6 +23,10 @@ class PeiduScreenService : AccessibilityService() {
 
         /** 截一张全屏图（软件位图，可直接裁剪/压缩） */
         fun capture(cb: (Bitmap?, String) -> Unit) {
+            if (android.os.Build.VERSION.SDK_INT < 30) {
+                cb(null, "桌面截图需要 Android 11 或更新版本")
+                return
+            }
             val s = inst
             if (s == null) {
                 cb(null, "无障碍服务没在运行")
@@ -34,13 +37,19 @@ class PeiduScreenService : AccessibilityService() {
                     override fun onSuccess(result: ScreenshotResult) {
                         var bmp: Bitmap? = null
                         try {
-                            val hb = result.hardwareBuffer
-                            val hw = Bitmap.wrapHardwareBuffer(hb, result.colorSpace)
-                            bmp = hw?.copy(Bitmap.Config.ARGB_8888, false)
-                            hw?.recycle()
-                            hb?.close()
+                            result.hardwareBuffer.use { buffer ->
+                                val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace)
+                                try {
+                                    bmp = hw?.copy(Bitmap.Config.ARGB_8888, false)
+                                } finally {
+                                    hw?.recycle()
+                                }
+                            }
                         } catch (e: Throwable) {
                             Log.w(TAG, "截图转位图失败: ${e.message}")
+                        }
+                        bmp?.let { image ->
+                            Log.d(TAG, "截图完成：${image.width}×${image.height}")
                         }
                         cb(bmp, if (bmp == null) "截图转位图失败" else "")
                     }

@@ -48,6 +48,7 @@ class FloatingBallService : Service() {
                 return
             }
             s.ball?.post {
+                if (s.ballVisible == v) return@post
                 try {
                     if (v) {
                         s.lp.x = s.savedX
@@ -58,6 +59,7 @@ class FloatingBallService : Service() {
                         s.lp.x = -(s.lp.width + 40)
                     }
                     s.wm.updateViewLayout(s.ball, s.lp)
+                    s.ballVisible = v
                     Log.i(TAG, "setBallVisible($v) -> x=${s.lp.x}")
                 } catch (e: Throwable) {
                     Log.w(TAG, "切球可见性失败: ${e.message}")
@@ -300,11 +302,11 @@ class FloatingBallService : Service() {
             col.addView(t, ip)
         }
 
-        addItem("📷", "截图", 0xE62F6FEB.toInt()) { doCapture() }
+        addItem("截图", "桌面截图", 0xE62F6FEB.toInt()) { doCapture() }
         addItem("拍照", "拍照", 0xE6455888.toInt()) { openImageSource(true) }
         addItem("选图", "本地选图", 0xE6455888.toInt()) { openImageSource(false) }
-        addItem("🏠", "主页", 0xE62A9E63.toInt()) { openMain() }
-        addItem("🔄", "切档位", 0xE68A5A2B.toInt()) { openPromptPicker() }
+        addItem("主页", "主页", 0xE62A9E63.toInt()) { openMain() }
+        addItem("换档", "换档", 0xE68A5A2B.toInt()) { openPromptPicker() }
         addItem("✕", "退出", 0xE6C0392B.toInt()) { exitPeidu() }
 
         // 贴着球：球在右半边 → 菜单在左；反之在右。垂直方向对齐球心，越界夹回屏幕内
@@ -365,7 +367,7 @@ class FloatingBallService : Service() {
     private fun doCapture() {
         dismissMenu()
         // 菜单是独立窗口，dismiss 之后要等它真正从屏幕上撤掉，否则会被截进图里
-        ball?.postDelayed({ realCapture() }, 150)
+        ball?.postDelayed({ realCapture() }, 350)
     }
 
     private fun realCapture() {
@@ -382,12 +384,17 @@ class FloatingBallService : Service() {
                 return@capture
             }
             ShotHolder.put(bmp)
-            setBallVisible(false)
             val i = Intent(this, MainActivity::class.java).apply {
                 action = MainActivity.ACTION_CAPTURE
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
-            startActivity(i)
+            try {
+                startActivity(i)
+            } catch (e: Exception) {
+                ShotHolder.take()?.recycle()
+                Log.w(TAG, "无法打开截图预览", e)
+                Notify.toast(this, "无法打开截图预览")
+            }
         }
     }
 
@@ -417,6 +424,8 @@ class FloatingBallService : Service() {
         ball = null
         super.onDestroy()
     }
+
+    private var ballVisible = true
 
     override fun onBind(intent: Intent?): IBinder? = null
 }

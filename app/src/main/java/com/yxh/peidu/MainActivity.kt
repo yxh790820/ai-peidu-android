@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         /** 点悬浮球截完屏后拉起本页，进入框选 */
+        const val EXTRA_CROP_PHOTO = "com.yxh.peidu.CROP_PHOTO"
         const val ACTION_CAPTURE = "com.yxh.peidu.CAPTURE"
         /** 从悬浮球菜单「切档位」进来，打开档位选择浮层 */
         const val ACTION_PROMPT = "com.yxh.peidu.PROMPT"
@@ -44,7 +45,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private val io = Executors.newCachedThreadPool()
     private var pendingText: String? = null
-    private var pendingImage: String? = null
+    private var pendingImage: Pair<String, Boolean>? = null
     private var pageReady = false
     private var floatMode = false
     private var pendingCapture = false
@@ -93,7 +94,7 @@ class MainActivity : AppCompatActivity() {
                 js("window.__setFloat && window.__setFloat($floatMode)")
                 if (pendingCapture) {
                     pendingCapture = false
-                    js("window.__onCapture && window.__onCapture()")
+                    showScreenshot()
                 }
                 flushPending()
             }
@@ -125,6 +126,11 @@ class MainActivity : AppCompatActivity() {
             js("window.__setFloat && window.__setFloat(false)")
         }
         handleIntent(intent)
+    }
+
+    private fun showScreenshot() {
+        FloatingBallService.setBallVisible(false)
+        js("window.__onCapture && window.__onCapture()")
     }
 
     private fun isFloatIntent(i: Intent?): Boolean {
@@ -167,11 +173,12 @@ class MainActivity : AppCompatActivity() {
     /** 点窗口外面（下面的读书 App）→ 退回后台，不销毁，对话保留 */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (floatMode) {
-            moveTaskToBack(true)
-            return
+        web.evaluateJavascript("!!(window.__closeCrop && window.__closeCrop())") { closed ->
+            if (closed != "true") {
+                if (floatMode) moveTaskToBack(true)
+                else super.onBackPressed()
+            }
         }
-        super.onBackPressed()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -211,7 +218,7 @@ class MainActivity : AppCompatActivity() {
         when (i.action) {
             ACTION_CAPTURE -> {
                 if (pageReady) {
-                    js("window.__onCapture && window.__onCapture()")
+                    showScreenshot()
                 } else {
                     pendingCapture = true
                 }
@@ -259,11 +266,17 @@ class MainActivity : AppCompatActivity() {
                 @Suppress("DEPRECATION")
                 val u: Uri? = i.getParcelableExtra(Intent.EXTRA_STREAM)
                 if (u != null) {
+                    val crop = i.getBooleanExtra(EXTRA_CROP_PHOTO, false)
                     io.execute {
                         val data = uriToDataUrl(u)
-                        if (data != null) {
-                            pendingImage = data
-                            flushPending()
+                        runOnUiThread {
+                            if (isDestroyed) return@runOnUiThread
+                            if (data == null) {
+                                Notify.toast(this, "无法读取图片")
+                            } else {
+                                pendingImage = data to crop
+                                flushPending()
+                            }
                         }
                     }
                 } else {
@@ -294,7 +307,8 @@ class MainActivity : AppCompatActivity() {
         val img = pendingImage
         if (img != null) {
             pendingImage = null
-            js("window.__onImage && window.__onImage(${JSONObject.quote(img)})")
+            val handler = if (img.second) "__onPhoto" else "__onImage"
+            js("window.$handler && window.$handler(${JSONObject.quote(img.first)})")
         }
         if (pendingPromptPicker) {
             pendingPromptPicker = false
@@ -486,7 +500,7 @@ class MainActivity : AppCompatActivity() {
                     return@capture
                 }
                 ShotHolder.put(bmp)
-                js("window.__onCapture && window.__onCapture()")
+                showScreenshot()
             }
             return "ok"
         }
