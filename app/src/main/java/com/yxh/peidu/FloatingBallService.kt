@@ -237,17 +237,24 @@ class FloatingBallService : Service() {
     }
 
     /**
-     * 球旁弹菜单：截图 / 主页 / 切档位 / 退出。
+     * 球旁弹菜单：截图 / 拍照 / 本地选图 / 主页 / 切档位 / 退出。
      * 用自绘的全屏 overlay 而不是 PopupWindow —— overlay 窗口上 PopupWindow 的
      * showAtLocation 坐标会被系统忽略（永远跑到屏幕角上），自己加一层才贴得住球。
      */
+    private fun openImageSource(camera: Boolean) {
+        startActivity(Intent(this, ImageSourceActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra(ImageSourceActivity.EXTRA_CAMERA, camera))
+    }
+
     private fun showBallMenu() {
         dismissMenu()
         val dm = resources.displayMetrics
-        val sz = dp(46f)
-        val gap = dp(10f)
+        val items = 6
         val pad = dp(10f)
-        val items = 4
+        val gap = dp(6f)
+        val available = dm.heightPixels - dp(48f) - pad * 2 - gap * (items - 1)
+        val sz = (available / items).coerceIn(dp(28f), dp(46f))
         val mw = sz + pad * 2
         val mh = sz * items + gap * (items - 1) + pad * 2
 
@@ -271,11 +278,13 @@ class FloatingBallService : Service() {
             isClickable = true
         }
 
-        fun addItem(emoji: String, color: Int, onClick: () -> Unit) {
+        fun addItem(emoji: String, label: String, color: Int, onClick: () -> Unit) {
             val t = TextView(this).apply {
                 text = emoji
+                contentDescription = label
                 setTextColor(Color.WHITE)
-                textSize = 21f
+                isSingleLine = true
+                textSize = if (emoji.length == 2 && emoji.all { it in '一'..'龥' }) 12f else 21f
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
@@ -291,10 +300,12 @@ class FloatingBallService : Service() {
             col.addView(t, ip)
         }
 
-        addItem("📷", 0xE62F6FEB.toInt()) { doCapture() }
-        addItem("🏠", 0xE62A9E63.toInt()) { openMain() }
-        addItem("🔄", 0xE68A5A2B.toInt()) { openPromptPicker() }
-        addItem("✕", 0xE6C0392B.toInt()) { exitPeidu() }
+        addItem("📷", "截图", 0xE62F6FEB.toInt()) { doCapture() }
+        addItem("拍照", "拍照", 0xE6455888.toInt()) { openImageSource(true) }
+        addItem("选图", "本地选图", 0xE6455888.toInt()) { openImageSource(false) }
+        addItem("🏠", "主页", 0xE62A9E63.toInt()) { openMain() }
+        addItem("🔄", "切档位", 0xE68A5A2B.toInt()) { openPromptPicker() }
+        addItem("✕", "退出", 0xE6C0392B.toInt()) { exitPeidu() }
 
         // 贴着球：球在右半边 → 菜单在左；反之在右。垂直方向对齐球心，越界夹回屏幕内
         val onRight = lp.x + lp.width / 2 > dm.widthPixels / 2
