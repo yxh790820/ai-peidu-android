@@ -44,13 +44,15 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var web: WebView
     private val io = Executors.newCachedThreadPool()
+    private val llm = LlmClient()
+    private var topicId = 0
+    private var pendingNewTopic = false
     private var pendingText: String? = null
     private var pendingImage: Pair<String, Boolean>? = null
     private var pageReady = false
     private var floatMode = false
     private var pendingCapture = false
     private var pendingPromptPicker = false
-    private var pendingHome = false
     private var pendingPaste = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,6 +94,7 @@ class MainActivity : AppCompatActivity() {
                 pageReady = true
                 pushSystemDark()
                 js("window.__setFloat && window.__setFloat($floatMode)")
+                flushNewTopic()
                 if (pendingCapture) {
                     pendingCapture = false
                     showScreenshot()
@@ -209,12 +212,23 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        LlmClient.cancel()
+        llm.cancel()
         io.shutdownNow()
     }
 
     private fun handleIntent(i: Intent?) {
         if (i == null) return
+        when (i.action) {
+            Intent.ACTION_MAIN, Intent.ACTION_PROCESS_TEXT, Intent.ACTION_SEND, ACTION_CAPTURE, ACTION_HOME -> {
+                topicId++
+                pendingText = null
+                pendingImage = null
+                pendingCapture = false
+                pendingPaste = false
+                pendingNewTopic = true
+                flushNewTopic(keepScreenshot = i.action == ACTION_CAPTURE)
+            }
+        }
         when (i.action) {
             ACTION_CAPTURE -> {
                 if (pageReady) {
@@ -238,15 +252,10 @@ class MainActivity : AppCompatActivity() {
                 floatMode = true
                 applyWindowMode()
                 pendingPaste = true
-                if (pageReady) {
-                    js("window.__setFloat && window.__setFloat(true)")
-                } else {
-                    pendingHome = true
-                }
                 // 如果本来就在前台（用户就在陪读界面点球），不会再触发 onWindowFocusChanged，这里直接读
                 if (hasWindowFocus() && ::web.isInitialized) {
                     pendingPaste = false
-                    web.postDelayed({ pasteClipboard(0) }, 300)
+                    queueClipboardPaste(300)
                 }
             }
             ACTION_EXIT -> {
@@ -261,29 +270,37 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             Intent.ACTION_SEND -> {
-                val t = i.getStringExtra(Intent.EXTRA_TEXT)
-                if (!t.isNullOrBlank()) pendingText = t
+                val t = i.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.takeUnless { it.isBlank() }
                 @Suppress("DEPRECATION")
                 val u: Uri? = i.getParcelableExtra(Intent.EXTRA_STREAM)
                 if (u != null) {
                     val crop = i.getBooleanExtra(EXTRA_CROP_PHOTO, false)
+                    val topic = topicId
                     io.execute {
                         val data = uriToDataUrl(u)
                         runOnUiThread {
-                            if (isDestroyed) return@runOnUiThread
+                            if (isDestroyed || topic != topicId) return@runOnUiThread
+                            pendingText = t
                             if (data == null) {
                                 Notify.toast(this, "无法读取图片")
                             } else {
                                 pendingImage = data to crop
-                                flushPending()
                             }
+                            flushPending()
                         }
                     }
                 } else {
+                    pendingText = t
                     flushPending()
                 }
             }
         }
+    }
+
+    private fun flushNewTopic(keepScreenshot: Boolean = pendingCapture) {
+        if (!pageReady || !pendingNewTopic) return
+        pendingNewTopic = false
+        js("window.__newTopic && window.__newTopic($keepScreenshot)")
     }
 
     private fun uriToDataUrl(uri: Uri): String? {
@@ -300,11 +317,11 @@ class MainActivity : AppCompatActivity() {
     private fun flushPending() {
         if (!pageReady) return
         val t = pendingText
+        val img = pendingImage
         if (t != null) {
             pendingText = null
-            js("window.__onIntent && window.__onIntent(${JSONObject.quote(t)})")
+            js("window.__onIntent && window.__onIntent(${JSONObject.quote(t)}, ${img != null})")
         }
-        val img = pendingImage
         if (img != null) {
             pendingImage = null
             val handler = if (img.second) "__onPhoto" else "__onImage"
@@ -313,10 +330,6 @@ class MainActivity : AppCompatActivity() {
         if (pendingPromptPicker) {
             pendingPromptPicker = false
             js("window.__openPromptPicker && window.__openPromptPicker()")
-        }
-        if (pendingHome) {
-            pendingHome = false
-            js("window.__setFloat && window.__setFloat(true)")
         }
     }
 
@@ -327,15 +340,20 @@ class MainActivity : AppCompatActivity() {
             pendingPaste = false
             if (::web.isInitialized) {
                 // 系统把 App 认成前台可能滞后一点，先等一下再读
-                web.postDelayed({ pasteClipboard(0) }, 350)
+                queueClipboardPaste(350)
             }
         }
     }
 
-    private fun pasteClipboard(attempt: Int) {
-        if (!::web.isInitialized) return
+    private fun queueClipboardPaste(delay: Long) {
+        val topic = topicId
+        web.postDelayed({ pasteClipboard(topic, 0) }, delay)
+    }
+
+    private fun pasteClipboard(topic: Int, attempt: Int) {
+        if (isDestroyed || topic != topicId) return
         if (!pageReady) {
-            if (attempt < 4) web.postDelayed({ pasteClipboard(attempt + 1) }, 300)
+            if (attempt < 4) web.postDelayed({ pasteClipboard(topic, attempt + 1) }, 300)
             return
         }
         val clip = readClipboard()
@@ -345,7 +363,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         // 还是空：可能系统还没把 App 算作前台，再试两次
-        if (attempt < 2) web.postDelayed({ pasteClipboard(attempt + 1) }, 400)
+        if (attempt < 2) web.postDelayed({ pasteClipboard(topic, attempt + 1) }, 400)
     }
 
     /** 读剪贴板文字：只在用户主动点「主页」时调用，不在后台偷读 */
@@ -373,13 +391,14 @@ class MainActivity : AppCompatActivity() {
     inner class Bridge {
 
         @JavascriptInterface
-        fun chat(payload: String) {
-            io.execute { LlmClient.run(this@MainActivity, payload) }
+        fun chat(requestId: Int, payload: String) {
+            val generation = llm.begin()
+            io.execute { llm.run(this@MainActivity, requestId, generation, payload) }
         }
 
         @JavascriptInterface
         fun stop() {
-            LlmClient.cancel()
+            llm.cancel()
         }
 
         @JavascriptInterface

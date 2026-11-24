@@ -233,7 +233,7 @@ html.float-mode #dragBar{ display:flex }
   <button class="ghost" id="permX">×</button>
 </div>
 <header class="bar">
-  <div class="brand">陪读<small id="ver">1.9.14</small></div>
+  <div class="brand">陪读<small id="ver">1.9.15</small></div>
   <select id="promptSel"></select>
   <button class="ico" id="wikiBtn" title="查维基">☐</button>
   <button class="ico" id="btnNew" title="新话题">＋</button>
@@ -397,6 +397,7 @@ var cfg = loadCfg();
 migratePrompts();
 var messages = [];      // [{role, content}]
 var busy = false, curText = '', curThink = '', curEl = null, curBubble = null;
+var requestId = 0, autoSendTimer = null;
 var quote = '', quoteImg = '';
 var curWikiTitles = '';   // 这一轮用到的维基条目名，答完贴在气泡上方
 var t0 = 0, tickTimer = null, rafPending = false, lastRender = 0;
@@ -775,6 +776,7 @@ function wikiLookupAsync(sources, q){
 
 async function send(){
   if(busy) return;
+  clearTimeout(autoSendTimer); autoSendTimer = null;
   var q = inputEl.value.trim();
   var img = quoteImg;
   if(!q && !img && !quote) return;
@@ -788,6 +790,8 @@ async function send(){
   }
 
   /* 先上屏：消息和输入框立刻响应，维基慢慢查 */
+  var id = ++requestId;
+  curWikiTitles = '';
   busy = true;
   setHint('发送中…', true);
   addMsg('user', q, img);
@@ -802,6 +806,7 @@ async function send(){
     try{
       setHint('查维基 · ' + onWikis.map(function(x){ return x.name; }).join(' / ') + '…', true);
       var w = await wikiLookupAsync(onWikis, q);
+      if(id !== requestId) return;
       if(w){
         var ts = (w.match(/《[^》]+》/g) || []);
         curWikiTitles = ts.length ? ts.join('、') : '';
@@ -810,7 +815,10 @@ async function send(){
       } else {
         setHint('维基里没查到 · 发送中…', true);
       }
-    }catch(e){ hintEl.textContent = ''; }
+    }catch(e){
+      if(id !== requestId) return;
+      setHint('', false);
+    }
   }
 
   /* 维基档：没拿到资料就本地直说，绝不让模型凭记忆编 */
@@ -865,8 +873,8 @@ async function send(){
     messages: [{role:'system', content: (p.system || '') + (imgOnly ? '\n\n【注意】这条消息只有一张图片、没有用户文字。请直接处理图片里的内容本身，不要把上面那句指令文字当作要处理的对象。' : '')}].concat(messages),
     params: svc().params || {}
   };
-  try{ PeiduBridge.chat(JSON.stringify(payload)); }
-  catch(e){ onError('桥接不可用：' + e); }
+  try{ PeiduBridge.chat(id, JSON.stringify(payload)); }
+  catch(e){ window.__onError(id, '桥接不可用：' + e); }
   return false;
 }
 function tick(){
@@ -885,11 +893,14 @@ function setHint(text, live){
   if(t) t.textContent = text || '';
 }
 function stop(){
+  requestId++;
+  rafPending = false;
   try{ PeiduBridge.stop(); }catch(e){}
   finish(true);
 }
 function finish(aborted){
   busy = false;
+  rafPending = false;
   clearInterval(tickTimer); tickTimer = null;
   sendEl.textContent = '发送'; sendEl.classList.remove('stop');
   if(aborted){
@@ -903,26 +914,30 @@ function finish(aborted){
 }
 
 /* ---------- 桥回调 ---------- */
-window.__onThink = function(t){
+window.__onThink = function(id, t){
+  if(!busy || id !== requestId) return;
   curThink += t;
   if(curThink && !curBubble.querySelector('.think')){
     var d = document.createElement('div'); d.className='think'; curBubble.insertBefore(d, curBubble.firstChild);
   }
   var th = curBubble.querySelector('.think');
   if(th) th.textContent = curThink;
-  scheduleRender();
+  scheduleRender(id);
 };
-window.__onDelta = function(t){
+window.__onDelta = function(id, t){
+  if(!busy || id !== requestId) return;
   curText += t;
-  scheduleRender();
+  scheduleRender(id);
 };
-function scheduleRender(){
-  if(rafPending) return;
+function scheduleRender(id){
+  if(rafPending || !busy || id !== requestId) return;
   var now = Date.now();
-  if(now - lastRender < 70){ setTimeout(scheduleRender, 70 - (now-lastRender)); return; }
+  if(now - lastRender < 70){ setTimeout(function(){ scheduleRender(id); }, 70 - (now-lastRender)); return; }
   rafPending = true;
   requestAnimationFrame(function(){
+    if(id !== requestId) return;
     rafPending = false; lastRender = Date.now();
+    if(!busy) return;
     if(curText.length > 6000){ curBubble.textContent = curText; }
     else { curBubble.innerHTML = renderRich(curText); }
     scrollBottom();
@@ -960,7 +975,8 @@ function clearMsgs(){
   messages = [];
   try{ localStorage.removeItem('peidu.msgs'); }catch(e){}
 }
-window.__onDone = function(full){
+window.__onDone = function(id, full){
+  if(!busy || id !== requestId) return;
   if(full) curText = full;
   curBubble.innerHTML = renderRich(curText);
   curWikiTitles = '';
@@ -1036,22 +1052,26 @@ var noteDirBtnEl = $('#noteDirBtn');
 if(noteDirBtnEl) noteDirBtnEl.onclick = function(){
   try{ PeiduBridge.pickNoteDir(); }catch(e){}
 };
-window.__onError = function(msg){
+window.__onError = function(id, msg){
+  if(!busy || id !== requestId) return;
   curWikiTitles = '';
   var d = document.createElement('div');
   d.style.cssText = 'color:#e5484d;font-size:14px;margin-top:6px;white-space:pre-wrap';
   d.textContent = '⚠ ' + msg;
-  if(curBubble) curBubble.appendChild(d);
-  if(!curText) curBubble.innerHTML = '';
+  if(curBubble){
+    if(!curText) curBubble.innerHTML = '';
+    curBubble.appendChild(d);
+  }
   finish(true);
   hintEl.textContent = '';
 };
 
 /* ---------- 系统进来的文字/图片 ---------- */
-window.__onIntent = function(text){
+window.__onIntent = function(text, withImage){
   if(!text) return;
   showQuote(text, '');
-  if(cfg.autoSend){ setTimeout(send, 60); }
+  if(withImage) return;
+  if(cfg.autoSend){ queueAutoSend(); }
   else inputEl.focus();
 };
 
@@ -1068,9 +1088,13 @@ window.__onClipboard = function(text){
   }catch(e){}
   setHint('已粘贴剪贴板内容，点「发送」再问', false);
 };
+function queueAutoSend(){
+  clearTimeout(autoSendTimer);
+  autoSendTimer = setTimeout(send, 60);
+}
 window.__onImage = function(dataUrl){
   showQuote(quote || '', dataUrl);
-  if(cfg.autoSend){ setTimeout(send, 60); }
+  if(cfg.autoSend){ queueAutoSend(); }
 };
 function showQuote(text, img){
   quote = text || ''; quoteImg = img || '';
@@ -1397,10 +1421,16 @@ document.querySelectorAll('#autoSeg button').forEach(function(b){
 /* ---------- 顶栏 ---------- */
 function fillPrompts(){ refreshPromptSelect(); }
 selEl.onchange = function(){ cfg.prompt = selEl.value; saveCfg(); };
-$('#btnNew').onclick = function(){
-  if(busy){ stop(); }
+window.__newTopic = function(keepScreenshot){
+  clearTimeout(autoSendTimer); autoSendTimer = null;
+  if(busy) stop();
+  closeCrop(keepScreenshot);
   clearMsgs(); chatEl.innerHTML = ''; clearQuote();
-  hintEl.textContent = ''; inputEl.value=''; autoGrow();
+  curText = ''; curThink = ''; curEl = null; curBubble = null; curWikiTitles = '';
+  setHint('', false); inputEl.value = ''; autoGrow();
+};
+$('#btnNew').onclick = function(){
+  window.__newTopic(false);
   inputEl.focus();
 };
 sendEl.onclick = function(){ if(busy) stop(); else send(); };
@@ -1539,13 +1569,15 @@ function doCrop(r){
   }
 }
 
-function closeCrop(){
+function closeCrop(keepScreenshot){
   if(cropLayerEl.classList.contains('hidden')) return false;
   cropPhoto = '';
   cropLayerEl.classList.add('hidden');
   cropSelEl.style.display = 'none';
   cropImgEl.removeAttribute('src');
-  try{ PeiduBridge.clearShot(); }catch(err){}
+  if(keepScreenshot !== true){
+    try{ PeiduBridge.clearShot(); }catch(err){}
+  }
   return true;
 }
 window.__closeCrop = closeCrop;

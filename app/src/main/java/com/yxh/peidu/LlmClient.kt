@@ -1,5 +1,6 @@
 package com.yxh.peidu
 
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -12,7 +13,7 @@ import java.util.concurrent.TimeUnit
  * payload: {base, key, model, messages:[{role,content}], params:{...}}
  * 回调：window.__onDelta / __onThink / __onDone / __onError
  */
-object LlmClient {
+class LlmClient {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -20,14 +21,40 @@ object LlmClient {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    @Volatile
-    private var call: okhttp3.Call? = null
+    private var call: Call? = null
+    private var generation = 0
 
+    @Synchronized
     fun cancel() {
+        generation++
         call?.cancel()
+        call = null
     }
 
-    fun run(act: MainActivity, payload: String) {
+    @Synchronized
+    fun begin(): Int {
+        cancel()
+        return generation
+    }
+
+    @Synchronized
+    private fun register(requestGeneration: Int, request: Call): Boolean {
+        if (requestGeneration != generation) return false
+        call = request
+        return true
+    }
+
+    @Synchronized
+    private fun unregister(requestGeneration: Int) {
+        if (requestGeneration == generation) call = null
+    }
+
+    fun run(act: MainActivity, requestId: Int, requestGeneration: Int, payload: String) {
+        fun emit(handler: String, text: String) {
+            act.js("window.$handler && window.$handler($requestId, ${JSONObject.quote(text)})")
+        }
+        fun error(text: String) = emit("__onError", text)
+
         val sb = StringBuilder()
         val thinkAll = StringBuilder()
         try {
@@ -47,7 +74,7 @@ object LlmClient {
             }
 
             if (base.isEmpty()) {
-                err(act, "服务地址没填（设置里填 base，比如 https://api.deepseek.com/v1）")
+                error("服务地址没填（设置里填 base，比如 https://api.deepseek.com/v1）")
                 return
             }
             // 与电脑版 peidu.py 一致：base 不以 /v1 结尾就自动补，否则本地 18080 会 400
@@ -61,16 +88,16 @@ object LlmClient {
                 .build()
 
             val c = client.newCall(req)
-            call = c
+            if (!register(requestGeneration, c)) return
             c.execute().use { resp ->
                 val rb = resp.body
                 if (!resp.isSuccessful) {
                     val txt = rb?.string()?.take(400) ?: ""
-                    err(act, "HTTP ${resp.code}  $txt")
+                    error("HTTP ${resp.code}  $txt")
                     return
                 }
                 if (rb == null) {
-                    err(act, "响应为空")
+                    error("响应为空")
                     return
                 }
                 val src = rb.source()
@@ -90,36 +117,28 @@ object LlmClient {
                     val think = delta.optString("reasoning_content", "")
                     if (think.isNotEmpty()) {
                         thinkAll.append(think)
-                        act.js("window.__onThink && window.__onThink(${JSONObject.quote(think)})")
+                        emit("__onThink", think)
                     }
                     val text = delta.optString("content", "")
                     if (text.isNotEmpty()) {
                         sb.append(text)
-                        act.js("window.__onDelta && window.__onDelta(${JSONObject.quote(text)})")
+                        emit("__onDelta", text)
                     }
                 }
                 if (sb.isEmpty()) {
                     if (thinkAll.isEmpty()) {
-                        err(act, "服务没返回内容（检查模型名 / 参数）")
+                        error("服务没返回内容（检查模型名 / 参数）")
                     } else {
-                        err(act, "只收到思考内容、没有正文。本地模型可能需要更长输出上限，或在附加参数里关掉 thinking。")
+                        error("只收到思考内容、没有正文。本地模型可能需要更长输出上限，或在附加参数里关掉 thinking。")
                     }
                 } else {
-                    act.js("window.__onDone && window.__onDone(${JSONObject.quote(sb.toString())})")
+                    emit("__onDone", sb.toString())
                 }
             }
         } catch (e: Exception) {
-            if (call?.isCanceled() == true) {
-                act.js("window.__onError && window.__onError(${JSONObject.quote("已停止")})")
-            } else {
-                err(act, e.javaClass.simpleName + ": " + (e.message ?: ""))
-            }
+            error(e.javaClass.simpleName + ": " + (e.message ?: ""))
         } finally {
-            call = null
+            unregister(requestGeneration)
         }
-    }
-
-    private fun err(act: MainActivity, msg: String) {
-        act.js("window.__onError && window.__onError(${JSONObject.quote(msg)})")
     }
 }

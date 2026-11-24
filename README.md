@@ -5,6 +5,7 @@
 An Android reading assistant: **select text in any app → tap "Peidu" → a floating card answers** without leaving your book. APK ~3.8 MB, no Python / Termux / runtime needed.
 
 - **Ask three ways**: selected text (system menu), floating ball → crop a screen region (scanned books, formulas, charts), or share from other apps
+- **New chats and follow-ups**: launching Peidu or bringing in new text or images starts a fresh chat. Type in the current chat to ask a follow-up.
 - **Save to Obsidian**: pick a folder once (SAF, **no storage permission**); each answer appends to today's `YYYY-MM-DD.md`, screenshots go to `attachments/`
 - **Wikipedia lookup**: local Kiwix + official Wikipedia, any number of sources; simplified and traditional spellings are both queried, a Chinese query goes to the Chinese library first and a Latin one to the English library; the ☑ toggle in the toolbar is the master switch — when it's off the app says "Wikipedia is not enabled" instead of letting the model guess
 - **Everything editable**: services (base / model / key / params) and prompt presets can be added, renamed, deleted; edit system prompt and template inline
@@ -41,9 +42,11 @@ An Android reading assistant: **select text in any app → tap "Peidu" → a flo
 
 ### 三种问法
 
-- **划词问**：任意 App 里长按选中文字 → 菜单里点「陪读」→ 小窗自动带着这段发问，答完点上面的原 App 区域就退回，**对话和上下文都保留**
+- **划词问**：任意 App 里长按选中文字 → 菜单里点「陪读」→ 小窗自动带着这段发问，答完点上面的原 App 区域就退回
 - **截图问**：桌面上的蓝色「读」悬浮球点一下 → 屏幕定格 → **拖一个框框住要问的段落** → 只把那一块发给模型（扫描版书页、公式、图表都能问）
 - **分享问**：别的 App 分享文字或图片给「陪读」，同样自动提问
+
+重新打开陪读，或通过划词、分享、截图、拍照、选图带入新内容时，会清空旧对话。要追问，在当前输入框继续发送。
 
 ### 三个能力
 
