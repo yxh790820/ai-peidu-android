@@ -7,7 +7,8 @@ An Android reading assistant: **select text in any app → tap "Peidu" → a flo
 - **Ask three ways**: selected text (system menu), floating ball → crop a screen region (scanned books, formulas, charts), or share from other apps
 - **New chats and follow-ups**: launching Peidu or bringing in new text or images starts a fresh chat. Type in the current chat to ask a follow-up.
 - **Save to Obsidian**: pick a folder once (SAF, **no storage permission**); each answer appends to today's `YYYY-MM-DD.md`, screenshots go to `attachments/`
-- **Wikipedia lookup**: local Kiwix + official Wikipedia, any number of sources; simplified and traditional spellings are both queried, a Chinese query goes to the Chinese library first and a Latin one to the English library; the ☑ toggle in the toolbar is the master switch — when it's off the app says "Wikipedia is not enabled" instead of letting the model guess
+- **Model switching**: choose a configured model from the home toolbar. The selection applies to the next message, including follow-ups.
+- **Wikipedia lookup**: check “查维基” in the home toolbar to look up sources before sending a message. Supports local Kiwix and official Wikipedia, simplified and traditional spellings, and Chinese or English lookup.
 - **Everything editable**: services (base / model / key / params) and prompt presets can be added, renamed, deleted; edit system prompt and template inline
 - KaTeX math, dark / light theme, font size 11–22, live status line showing what it's doing right now
 - Android 7.0+ · no API key bundled · [Releases](../../releases)
@@ -51,13 +52,14 @@ An Android reading assistant: **select text in any app → tap "Peidu" → a flo
 ### 三个能力
 
 - **存笔记到 Obsidian**：⚙ 里选一次笔记目录（系统目录选择器，**不需要存储权限**），每条回答点「存笔记」→ 追加到当天 `YYYY-MM-DD.md`，截图写进 `attachments/`，正文用 `![[图]]`，Obsidian 里图文都能看
-- **维基百科检索**：主界面 ☑ 打钩后，提问前先查维基。支持**多个源**（本地 Kiwix + 官方 Wikipedia，可增删改），按顺序试、拿到就停；回答顶部标「📖 参考维基百科：《条目》」。没打钩就明确说"没有开启查维基"，**不让模型凭记忆编**
+- **维基百科检索**：勾选主页的「查维基」，提问前先查询配置的维基源。支持本地 Kiwix 和官方 Wikipedia，按设置顺序尝试。回答顶部显示参考条目。未勾选时，普通档位直接提问，「维基百科」档会提示勾选。
 - **检索细节（与电脑版一致）**：一个词会同时查**简体和繁体**两种写法（`三国演义` 也查 `三國演義`）；**打中文先查中文库、打英文单词先查英文库**，查不到再换另一种（英文结果会标注「下面是英文条目，请用中文回答」）；词条大小写不敏感，`china` 和 `China` 一样能查到；**同名条目优先直取**（Kiwix 的标题索引不全，搜「日本」只有 `.日本 / BS日本 / CS日本`）；每篇正文约 **2500 字**、按句末截断（不会切成半截让模型说「资料中断」）
 - **服务和档位都能自己管**：服务（地址/模型/Key/附加参数）和提示词档位都是列表，可添加、改名、删除；档位点「编辑」能直接看和改 system 与提问模板（`$content` 是选中文/图的占位）
 
 ### 界面
 
 - **悬浮小窗**：卡片顶部横杠拖动、底边短横条改高度，位置记忆
+- **模型切换**：在全屏主页或小窗的「模型」下拉中选择已配置的模型，下一条提问生效，也可以换模型继续追问。
 - **九个内置档位**：陪读 / 翻译 / 润色 / 总结 / 拼音+简单解释 / 古文今译 / 古文纯译 / 截图转公式 / 维基百科
 - **状态条**：输入框上方实时显示在干什么（`查维基 · 本地 Kiwix…` / `思考中 5s` / `生成中 8s · 1200 字`），蓝点呼吸表示还活着；30 秒没响应会提示"可能网络或服务有问题"
 - **KaTeX 公式**：行内行间公式都能渲染，中文不会变方框

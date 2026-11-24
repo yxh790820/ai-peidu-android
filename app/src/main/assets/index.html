@@ -38,12 +38,22 @@ body{
 
 /* 顶栏 */
 .bar{
-  display:flex;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
-  background:var(--bg);border-bottom:1px solid var(--line);flex:0 0 auto;
+  display:flex;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top) + 8px) 10px 6px;
+  background:var(--bg);
 }
+.toolbar{flex:0 0 auto;border-bottom:1px solid var(--line)}
+.request-options{display:flex;align-items:center;gap:8px;padding:0 10px 8px}
+.request-options label{font-size:13px;white-space:nowrap}
+.model-label{color:var(--muted)}
+#modelSel{font-size:13px;text-overflow:ellipsis}
+.wiki-toggle{
+  display:flex;align-items:center;gap:5px;flex:none;min-height:34px;padding:0 8px;
+  border:1px solid var(--line);border-radius:9px;background:var(--panel);cursor:pointer;
+}
+.wiki-toggle input{width:16px;height:16px;margin:0;accent-color:var(--accent)}
 .brand{font-weight:700;font-size:15px;letter-spacing:.5px;white-space:nowrap}
 .brand small{font-weight:400;color:var(--muted);font-size:10px;margin-left:3px}
-#promptSel{
+#promptSel,#modelSel{
   flex:1;min-width:0;appearance:none;background:var(--panel);color:var(--fg);
   border:1px solid var(--line);border-radius:9px;padding:7px 22px 7px 9px;font-size:14px;
   background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
@@ -232,12 +242,20 @@ html.float-mode #dragBar{ display:flex }
   <button id="permGo">去开启</button>
   <button class="ghost" id="permX">×</button>
 </div>
-<header class="bar">
-  <div class="brand">陪读<small id="ver">1.9.15</small></div>
-  <select id="promptSel"></select>
-  <button class="ico" id="wikiBtn" title="查维基">☐</button>
-  <button class="ico" id="btnNew" title="新话题">＋</button>
-  <button class="ico" id="btnCfg" title="设置">⚙</button>
+<header class="toolbar">
+  <div class="bar">
+    <div class="brand">陪读<small id="ver">1.9.16</small></div>
+    <select id="promptSel" aria-label="提示词档位"></select>
+    <button class="ico" id="btnNew" title="新话题">＋</button>
+    <button class="ico" id="btnCfg" title="设置">⚙</button>
+  </div>
+  <div class="request-options">
+    <label class="model-label" for="modelSel">模型</label>
+    <select id="modelSel"></select>
+    <label class="wiki-toggle" title="提问时先查维基百科">
+      <input id="wikiToggle" type="checkbox">查维基
+    </label>
+  </div>
 </header>
 
 <main id="chat"></main>
@@ -370,7 +388,8 @@ html.float-mode #dragBar{ display:flex }
 
 var $ = function(s){ return document.querySelector(s); };
 var chatEl = $('#chat'), inputEl = $('#input'), sendEl = $('#btnSend'),
-    hintEl = $('#hint'), selEl = $('#promptSel');
+    hintEl = $('#hint'), selEl = $('#promptSel'), modelSel = $('#modelSel'),
+    wikiToggle = $('#wikiToggle');
 
 var PROMPTS = window.PEIDU_PROMPTS || [];
 var SEC = window.PEIDU_SECRETS || {};
@@ -397,7 +416,7 @@ var cfg = loadCfg();
 migratePrompts();
 var messages = [];      // [{role, content}]
 var busy = false, curText = '', curThink = '', curEl = null, curBubble = null;
-var requestId = 0, autoSendTimer = null;
+var requestId = 0, autoSendTimer = null, curServiceName = '';
 var quote = '', quoteImg = '';
 var curWikiTitles = '';   // 这一轮用到的维基条目名，答完贴在气泡上方
 var t0 = 0, tickTimer = null, rafPending = false, lastRender = 0;
@@ -455,8 +474,7 @@ function svc(){
   for(var i = 0; i < arr.length; i++){ if(arr[i].id === cfg.current) return arr[i]; }
   return arr[0] || {base:'',model:'',key:'',params:{}};
 }
-function svcName(){
-  var s = svc();
+function svcName(s){
   return s.name || s.id || '';
 }
 /* 档位列表：第一次从 prompts.js 灌进来，之后以用户编辑过的为准 */
@@ -782,6 +800,11 @@ async function send(){
   if(!q && !img && !quote) return;
   if(!q && quote){ q = quote; }
   var p = promptByName(cfg.prompt);
+  var service = svc();
+  var payload = {
+    base: service.base, key: service.key, model: service.model,
+    params: service.params || {}
+  };
   /* 只有图片、没有用户文字：用档位自己的截图问法（翻译档就该说“翻译图中外文”，不能说“解释这段”） */
   var imgOnly = false;
   if(!q && img){
@@ -791,6 +814,7 @@ async function send(){
 
   /* 先上屏：消息和输入框立刻响应，维基慢慢查 */
   var id = ++requestId;
+  curServiceName = svcName(service);
   curWikiTitles = '';
   busy = true;
   setHint('发送中…', true);
@@ -801,8 +825,9 @@ async function send(){
   sendEl.textContent = '停止'; sendEl.classList.add('stop');
 
   var wikiNote = '';
+  var wikiOn = cfg.wikiOn;
   var onWikis = (cfg.wikis || []).filter(function(x){ return x.on && x.base; });
-  if(cfg.wikiOn && q && onWikis.length){
+  if(wikiOn && q && onWikis.length){
     try{
       setHint('查维基 · ' + onWikis.map(function(x){ return x.name; }).join(' / ') + '…', true);
       var w = await wikiLookupAsync(onWikis, q);
@@ -824,7 +849,7 @@ async function send(){
   /* 维基档：没拿到资料就本地直说，绝不让模型凭记忆编 */
   if(p.wiki && !wikiNote){
     var why;
-    if(!cfg.wikiOn) why = '没有开启查维基：先在顶栏点 ☑ 维基。';
+    if(!wikiOn) why = '没有开启查维基，请勾选主页的「查维基」。';
     else if(!onWikis.length) why = '没有可用的维基源：到 ⚙ 里把「维基源」打钩。';
     else why = '维基里没查到「' + q + '」。这次查过：' + onWikis.map(function(x){ return x.name; }).join('、') +
                '。本地 Kiwix 要先确认 NAS 开着（同一个 WiFi）；官方维基要能连外网。也可以换个词再试。';
@@ -868,11 +893,10 @@ async function send(){
   setHint('已发送 · 等待响应…', true);
   tickTimer = setInterval(tick, 500);
 
-  var payload = {
-    base: svc().base, key: svc().key, model: svc().model,
-    messages: [{role:'system', content: (p.system || '') + (imgOnly ? '\n\n【注意】这条消息只有一张图片、没有用户文字。请直接处理图片里的内容本身，不要把上面那句指令文字当作要处理的对象。' : '')}].concat(messages),
-    params: svc().params || {}
-  };
+  payload.messages = [{
+    role: 'system',
+    content: (p.system || '') + (imgOnly ? '\n\n【注意】这条消息只有一张图片、没有用户文字。请直接处理图片里的内容本身，不要把上面那句指令文字当作要处理的对象。' : '')
+  }].concat(messages.map(function(m){ return {role: m.role, content: m.content}; }));
   try{ PeiduBridge.chat(id, JSON.stringify(payload)); }
   catch(e){ window.__onError(id, '桥接不可用：' + e); }
   return false;
@@ -966,7 +990,7 @@ function restoreMsgs(){
       addMsg(m.role, txt);
       var el = chatEl.lastElementChild;
       if(m.role === 'user') prevUser = m;
-      else if(m.role === 'assistant' && el) addActions(el, txt, prevUser);
+      else if(m.role === 'assistant' && el) addActions(el, txt, prevUser, m.service);
     });
     messages = s;
   }catch(e){}
@@ -980,17 +1004,17 @@ window.__onDone = function(id, full){
   if(full) curText = full;
   curBubble.innerHTML = renderRich(curText);
   curWikiTitles = '';
-  messages.push({role:'assistant', content: curText});
+  messages.push({role:'assistant', content: curText, service: curServiceName});
   var lastUser = null;
   for(var i = messages.length - 2; i >= 0; i--){
     if(messages[i].role === 'user'){ lastUser = messages[i]; break; }
   }
-  addActions(curEl, curText, lastUser);
+  addActions(curEl, curText, lastUser, curServiceName);
   finish(false);
   saveMsgs();
   scrollBottom();
 };
-function addActions(el, text, userMsg){
+function addActions(el, text, userMsg, service){
   var bar = document.createElement('div');
   bar.className = 'msgactions';
   var b = document.createElement('button');
@@ -999,7 +1023,7 @@ function addActions(el, text, userMsg){
   bar.appendChild(b);
   var sb = document.createElement('button');
   sb.textContent = '存笔记';
-  sb.onclick = function(){ doSaveNote(text, userMsg); };
+  sb.onclick = function(){ doSaveNote(text, userMsg, service); };
   bar.appendChild(sb);
   el.appendChild(bar);
 }
@@ -1017,13 +1041,13 @@ function turnParts(userMsg){
   }
   return { txt: txt, img: img };
 }
-function doSaveNote(answer, userMsg){
+function doSaveNote(answer, userMsg, service){
   var p = turnParts(userMsg);
   var payload = {
     text: p.txt,
     question: p.txt,
     answer: answer,
-    service: svcName(),
+    service: service || svcName(svc()),
     prompt: cfg.prompt,
     image: p.img
   };
@@ -1139,9 +1163,10 @@ function fillSheet(){
     b.classList.toggle('on', (b.dataset.a === '1') === !!cfg.autoSend);
   });
   renderSvcList();
+  refreshModelSelect();
   renderPrList();
   renderWikiList();
-  refreshWikiBtn();
+  refreshWikiToggle();
 }
 
 /* ---------- 服务列表 ---------- */
@@ -1236,14 +1261,12 @@ $('#wikiAdd').onclick = function(){
     saveCfg(); fillSheet();
   });
 };
-function refreshWikiBtn(){
-  var b = $('#wikiBtn'); if(!b) return;
-  b.textContent = cfg.wikiOn ? '☑' : '☐';
-  b.classList.toggle('on', !!cfg.wikiOn);
+function refreshWikiToggle(){
+  wikiToggle.checked = cfg.wikiOn;
 }
-$('#wikiBtn').onclick = function(){
-  cfg.wikiOn = !cfg.wikiOn;
-  saveCfg(); refreshWikiBtn();
+wikiToggle.onchange = function(){
+  cfg.wikiOn = wikiToggle.checked;
+  saveCfg();
 };
 
 /* ---------- 档位列表 ---------- */
@@ -1404,6 +1427,7 @@ $('#cfgClose').onclick = function(){
     catch(e){ toastMsg('附加参数不是合法 JSON，已保留原值'); }
   } else s.params = {};
   saveCfg();
+  refreshModelSelect();
   $('#mask').classList.add('hidden');
   hintEl.textContent = '';
 };
@@ -1421,6 +1445,21 @@ document.querySelectorAll('#autoSeg button').forEach(function(b){
 /* ---------- 顶栏 ---------- */
 function fillPrompts(){ refreshPromptSelect(); }
 selEl.onchange = function(){ cfg.prompt = selEl.value; saveCfg(); };
+function refreshModelSelect(){
+  modelSel.innerHTML = '';
+  cfg.services.forEach(function(s){
+    var option = document.createElement('option');
+    var name = svcName(s);
+    var model = String(s.model || '');
+    option.value = s.id;
+    option.textContent = model.toLowerCase() === name.toLowerCase()
+      ? model
+      : (model || '未填写模型') + ' · ' + name;
+    modelSel.appendChild(option);
+  });
+  modelSel.value = cfg.current;
+}
+modelSel.onchange = function(){ cfg.current = modelSel.value; saveCfg(); };
 window.__newTopic = function(keepScreenshot){
   clearTimeout(autoSendTimer); autoSendTimer = null;
   if(busy) stop();
@@ -1655,7 +1694,7 @@ document.addEventListener('visibilitychange', function(){
 /* ---------- 默认记录 ---------- */
 restoreMsgs();
 checkPerms();
-refreshWikiBtn();
+refreshWikiToggle();
 setTimeout(checkPerms, 1200);
 if(!messages.length && !chatEl.childNodes.length){
   var hi = document.createElement('div');
@@ -1668,6 +1707,7 @@ if(!messages.length && !chatEl.childNodes.length){
 
 applyTheme();
 fillPrompts();
+refreshModelSelect();
 })();
 </script>
 </body>
